@@ -1,0 +1,2024 @@
+openapi: 3.1.0
+info:
+  title: Brightloop Subscription Management API
+  version: 0.1.0
+  summary: Draft contract for parallel frontend and backend development.
+  description: |
+    Initial contract for Brightloop Software's subscription management platform.
+
+    This is a **team draft**, not a claim that every endpoint is already implemented.
+    Developer A (backend) maintains this file; Developer B (frontend) reviews it and
+    builds against it. Any breaking field/route/enum change must be agreed by both.
+
+    Conventions:
+    - API prefix: /api/v1. Health is /health.
+    - IDs are UUIDs.
+    - Timestamps are ISO 8601 UTC strings.
+    - Money is represented as decimal strings plus a currency code (never JSON float).
+    - List responses use items/total/page/pageSize.
+    - Errors use ErrorResponse.
+    - Roles: ADMIN, STAFF, CUSTOMER.
+
+    Draft assumptions to confirm before final billing implementation:
+    - Plan price is treated as a recurring base fee; subscription product lines are additional recurring charges.
+    - Upgrade charges the full price difference immediately (no time proration in MVP).
+    - Downgrade takes effect at next renewal, with no immediate refund.
+    - INR and Asia/Kolkata are proposed configurable defaults, not hardcoded policy.
+    - Gateway provider and production GST configuration remain to be selected/configured.
+  contact:
+    name: Brightloop project team
+servers:
+  - url: http://localhost:8000
+    description: Local FastAPI development server
+  - url: https://{host}
+    description: Configurable deployed API host
+    variables:
+      host:
+        default: api.example.com
+tags:
+  - name: Health
+  - name: Auth
+  - name: Customers
+  - name: Products
+  - name: Plans
+  - name: Taxes
+  - name: Discounts
+  - name: Quote Templates
+  - name: Quotations
+  - name: Subscriptions
+  - name: Invoices
+  - name: Payments
+  - name: Analytics
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: healthCheck
+      summary: Check API health
+      security: []
+      responses:
+        '200':
+          description: API process is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+                  timestamp: { type: string, format: date-time }
+              example: { status: ok, timestamp: '2026-10-31T04:00:00Z' }
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerCustomer
+      summary: Register a customer account
+      description: Public self-registration creates a CUSTOMER account and associated customer profile. Staff accounts cannot be self-registered.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+            example:
+              fullName: Asha Rao
+              email: asha@example.com
+              password: Strong!Pass123
+              businessName: Rao Retail
+              phone: '+919876543210'
+      responses:
+        '201':
+          description: Customer account created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Authenticate a user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            example: { email: asha@example.com, password: Strong!Pass123 }
+      responses:
+        '200':
+          description: Authenticated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshAccessToken
+      summary: Refresh access token using refresh token cookie
+      description: The implementation should issue the refresh token in a secure HttpOnly cookie. Frontend must use credentialed requests where configured.
+      security: []
+      responses:
+        '200':
+          description: New access token issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Logout and clear refresh session
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Session ended; refresh cookie cleared. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Get the authenticated user and role
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: requestPasswordReset
+      summary: Request password reset email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          description: Request accepted. Response should not reveal whether an email exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      summary: Set a new password using a reset token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string, minLength: 20 }
+                newPassword: { $ref: '#/components/schemas/Password' }
+      responses:
+        '200':
+          description: Password reset completed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/staff:
+    get:
+      tags: [Auth]
+      operationId: listStaffMembers
+      summary: List internal staff members (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated staff members.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Auth]
+      operationId: createStaffMember
+      summary: Create an internal staff account (admin only)
+      description: Only an ADMIN may create STAFF accounts. Public registration cannot create staff users.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StaffCreateRequest' }
+      responses:
+        '201':
+          description: Staff account created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/customers:
+    get:
+      tags: [Customers]
+      operationId: listCustomers
+      summary: List customers
+      description: ADMIN and STAFF. CUSTOMER role must use its own customer profile from /auth/me or customer portal endpoints.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - name: status
+          in: query
+          schema: { type: string, enum: [ACTIVE, INACTIVE] }
+      responses:
+        '200':
+          description: Paginated customers.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Customers]
+      operationId: createCustomer
+      summary: Create a customer profile (staff/admin)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerCreate' }
+      responses:
+        '201':
+          description: Customer created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/customers/{customerId}:
+    parameters:
+      - $ref: '#/components/parameters/CustomerId'
+    get:
+      tags: [Customers]
+      operationId: getCustomer
+      summary: Get customer detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Customer detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Customers]
+      operationId: updateCustomer
+      summary: Update customer profile
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerUpdate' }
+      responses:
+        '200':
+          description: Updated customer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/products:
+    get:
+      tags: [Products]
+      operationId: listProducts
+      summary: List products
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - name: isActive
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Paginated products.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Product' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Products]
+      operationId: createProduct
+      summary: Create product with optional variant options
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCreate' }
+            example:
+              name: Business Suite
+              type: SOFTWARE
+              salesPrice: '1000.00'
+              costPrice: '450.00'
+              currency: INR
+              notes: Core subscription product
+              variants:
+                - attributeName: Brand
+                  attributeValue: Odoo
+                  priceAdjustment: '560.00'
+      responses:
+        '201':
+          description: Product created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/products/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Products]
+      operationId: getProduct
+      summary: Get product and variant options
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Product detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Products]
+      operationId: updateProduct
+      summary: Update product
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductUpdate' }
+      responses:
+        '200':
+          description: Updated product.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/products/{productId}/archive:
+    post:
+      tags: [Products]
+      operationId: archiveProduct
+      summary: Archive product instead of deleting historical references
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204': { description: Product archived. }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/plans:
+    get:
+      tags: [Plans]
+      operationId: listPlans
+      summary: List subscription plans
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - name: isActive
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Paginated plans.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Plan' }
+    post:
+      tags: [Plans]
+      operationId: createPlan
+      summary: Create a plan
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanCreate' }
+      responses:
+        '201':
+          description: Plan created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/plans/{planId}:
+    parameters:
+      - $ref: '#/components/parameters/PlanId'
+    get:
+      tags: [Plans]
+      operationId: getPlan
+      summary: Get plan
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Plan detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Plans]
+      operationId: updatePlan
+      summary: Update plan
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanUpdate' }
+      responses:
+        '200':
+          description: Updated plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/plans/{planId}/archive:
+    post:
+      tags: [Plans]
+      operationId: archivePlan
+      summary: Archive plan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '204': { description: Plan archived. }
+
+  /api/v1/tax-rules:
+    get:
+      tags: [Taxes]
+      operationId: listTaxRules
+      summary: List configurable tax rules
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated tax rules.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/TaxRule' }
+    post:
+      tags: [Taxes]
+      operationId: createTaxRule
+      summary: Create tax rule
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaxRuleCreate' }
+      responses:
+        '201':
+          description: Tax rule created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxRule' }
+  /api/v1/tax-rules/{taxRuleId}:
+    parameters:
+      - $ref: '#/components/parameters/TaxRuleId'
+    patch:
+      tags: [Taxes]
+      operationId: updateTaxRule
+      summary: Update tax rule
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaxRuleUpdate' }
+      responses:
+        '200':
+          description: Updated tax rule.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxRule' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/discount-rules:
+    get:
+      tags: [Discounts]
+      operationId: listDiscountRules
+      summary: List discount rules
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated discount rules.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/DiscountRule' }
+    post:
+      tags: [Discounts]
+      operationId: createDiscountRule
+      summary: Create discount rule (admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DiscountRuleCreate' }
+      responses:
+        '201':
+          description: Discount rule created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountRule' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/v1/discount-rules/{discountRuleId}:
+    parameters:
+      - $ref: '#/components/parameters/DiscountRuleId'
+    patch:
+      tags: [Discounts]
+      operationId: updateDiscountRule
+      summary: Update discount rule (admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DiscountRuleUpdate' }
+      responses:
+        '200':
+          description: Updated discount rule.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountRule' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/quote-templates:
+    get:
+      tags: [Quote Templates]
+      operationId: listQuoteTemplates
+      summary: List quotation templates
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated templates.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/QuoteTemplate' }
+    post:
+      tags: [Quote Templates]
+      operationId: createQuoteTemplate
+      summary: Create quotation template
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteTemplateCreate' }
+      responses:
+        '201':
+          description: Template created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuoteTemplate' }
+  /api/v1/quote-templates/{templateId}:
+    parameters:
+      - $ref: '#/components/parameters/TemplateId'
+    get:
+      tags: [Quote Templates]
+      operationId: getQuoteTemplate
+      summary: Get quotation template detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Template detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuoteTemplate' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Quote Templates]
+      operationId: updateQuoteTemplate
+      summary: Update quotation template
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteTemplateUpdate' }
+      responses:
+        '200':
+          description: Updated template.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuoteTemplate' }
+
+  /api/v1/quotations:
+    get:
+      tags: [Quotations]
+      operationId: listQuotations
+      summary: List quotations visible to the current user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/QuotationStatus' }
+        - name: customerId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Paginated quotations.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Quotation' }
+    post:
+      tags: [Quotations]
+      operationId: createQuotation
+      summary: Create quotation, optionally from a template
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuotationCreate' }
+      responses:
+        '201':
+          description: Quotation created in DRAFT state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quotation' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/quotations/{quotationId}:
+    parameters:
+      - $ref: '#/components/parameters/QuotationId'
+    get:
+      tags: [Quotations]
+      operationId: getQuotation
+      summary: Get quotation detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Quotation detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quotation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/quotations/{quotationId}/send:
+    post:
+      tags: [Quotations]
+      operationId: sendQuotation
+      summary: Send quotation to customer; starts or confirms its validity window
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/QuotationId'
+      responses:
+        '200':
+          description: Quotation sent and status is QUOTATION.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quotation' }
+  /api/v1/quotations/{quotationId}/accept:
+    post:
+      tags: [Quotations]
+      operationId: acceptQuotation
+      summary: Customer accepts own quotation
+      description: Acceptance transitions quotation to CONFIRMED and creates/links a subscription in CONFIRMED state. The backend enforces customer ownership and quote expiry.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/QuotationId'
+      responses:
+        '200':
+          description: Accepted quotation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quotation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/quotations/{quotationId}/reject:
+    post:
+      tags: [Quotations]
+      operationId: rejectQuotation
+      summary: Customer rejects own quotation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/QuotationId'
+      responses:
+        '200':
+          description: Rejected quotation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quotation' }
+
+  /api/v1/subscriptions:
+    get:
+      tags: [Subscriptions]
+      operationId: listSubscriptions
+      summary: List subscriptions visible to current user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/SubscriptionStatus' }
+        - name: customerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: renewalBefore
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Paginated subscriptions.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Subscription' }
+    post:
+      tags: [Subscriptions]
+      operationId: createSubscription
+      summary: Create a subscription from a confirmed quotation or staff workflow
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscriptionCreate' }
+      responses:
+        '201':
+          description: Subscription created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+  /api/v1/subscriptions/{subscriptionId}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionId'
+    get:
+      tags: [Subscriptions]
+      operationId: getSubscription
+      summary: Get subscription detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Subscription detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/subscriptions/{subscriptionId}/activate:
+    post:
+      tags: [Subscriptions]
+      operationId: activateSubscription
+      summary: Activate a confirmed subscription when its start date/policy permits
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Activated subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/subscriptions/{subscriptionId}/pause:
+    post:
+      tags: [Subscriptions]
+      operationId: pauseSubscription
+      summary: Pause subscription if plan policy permits
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Paused subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/subscriptions/{subscriptionId}/resume:
+    post:
+      tags: [Subscriptions]
+      operationId: resumeSubscription
+      summary: Resume a paused subscription if policy permits
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Resumed subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+  /api/v1/subscriptions/{subscriptionId}/renew:
+    post:
+      tags: [Subscriptions]
+      operationId: renewSubscription
+      summary: Renew subscription according to plan policy
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Renewed subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+  /api/v1/subscriptions/{subscriptionId}/cancel:
+    post:
+      tags: [Subscriptions]
+      operationId: cancelSubscription
+      summary: Schedule cancellation at current expiry
+      description: Normal customer cancellation keeps service active through the paid-through expiry date. Immediate early close is a separate privileged operation governed by plan policy and is not implied by this route.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Cancellation scheduled at period end.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+  /api/v1/subscriptions/{subscriptionId}/change-plan:
+    post:
+      tags: [Subscriptions]
+      operationId: changeSubscriptionPlan
+      summary: Change subscription plan
+      description: Equal monetary value produces no adjustment. Higher value charges the price difference under current MVP assumption. Lower value is assumed to become effective at next renewal; confirm policy before release.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPlanId]
+              properties:
+                newPlanId: { type: string, format: uuid }
+                effectiveAt: { type: string, format: date-time, description: Omit to apply the backend policy default. }
+      responses:
+        '200':
+          description: Plan change result including any price adjustment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanChangeResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/invoices:
+    get:
+      tags: [Invoices]
+      operationId: listInvoices
+      summary: List invoices visible to current user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/InvoiceStatus' }
+        - name: customerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: overdueOnly
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Paginated invoices.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Invoice' }
+  /api/v1/invoices/{invoiceId}:
+    parameters:
+      - $ref: '#/components/parameters/InvoiceId'
+    get:
+      tags: [Invoices]
+      operationId: getInvoice
+      summary: Get invoice detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Invoice detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/invoices/{invoiceId}/confirm:
+    post:
+      tags: [Invoices]
+      operationId: confirmInvoice
+      summary: Confirm a draft invoice
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InvoiceId'
+      responses:
+        '200':
+          description: Confirmed invoice.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+  /api/v1/invoices/{invoiceId}/cancel:
+    post:
+      tags: [Invoices]
+      operationId: cancelInvoice
+      summary: Cancel an invoice when business rules permit
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InvoiceId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Cancelled invoice.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+  /api/v1/invoices/{invoiceId}/send:
+    post:
+      tags: [Invoices]
+      operationId: sendInvoice
+      summary: Send invoice to customer by configured email provider
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InvoiceId'
+      responses:
+        '202':
+          description: Invoice delivery queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+  /api/v1/invoices/{invoiceId}/pdf:
+    get:
+      tags: [Invoices]
+      operationId: downloadInvoicePdf
+      summary: Download or print invoice PDF
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InvoiceId'
+      responses:
+        '200':
+          description: Invoice PDF.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/payments:
+    get:
+      tags: [Payments]
+      operationId: listPayments
+      summary: List recorded payments
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: invoiceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: customerId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Paginated payments.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Payment' }
+    post:
+      tags: [Payments]
+      operationId: recordPayment
+      summary: Record a manual payment against an invoice
+      description: Manual payment recording must work without gateway credentials. Amount can be less than the invoice balance if partial payments are enabled.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentCreate' }
+            example:
+              invoiceId: 88888888-8888-4888-8888-888888888888
+              method: UPI
+              amount: '500.00'
+              currency: INR
+              paidAt: '2026-10-31T09:00:00+05:30'
+              note: UPI transfer received
+      responses:
+        '201':
+          description: Payment recorded and invoice balance recalculated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/payments/gateway-intents:
+    post:
+      tags: [Payments]
+      operationId: createGatewayPaymentIntent
+      summary: Create gateway payment intent (provider adapter; provider TBD)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId]
+              properties:
+                invoiceId: { type: string, format: uuid }
+                returnUrl: { type: string, format: uri }
+      responses:
+        '201':
+          description: Gateway intent created by configured provider.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayIntent' }
+        '501':
+          description: No gateway provider is configured.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /api/v1/payments/webhooks/{provider}:
+    post:
+      tags: [Payments]
+      operationId: receivePaymentWebhook
+      summary: Receive payment gateway webhook
+      description: Public provider endpoint; implementation must verify provider signature and deduplicate event IDs. Never trust client-submitted payment success.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, example: configured-provider }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '202': { description: Webhook accepted for processing. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/v1/analytics/summary:
+    get:
+      tags: [Analytics]
+      operationId: getAnalyticsSummary
+      summary: Get finance dashboard summary
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: currency
+          in: query
+          schema: { type: string, minLength: 3, maxLength: 3, example: INR }
+      responses:
+        '200':
+          description: Dashboard summary. Monetary fields are decimal strings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSummary' }
+              example:
+                activeSubscriptions: 128
+                revenueReceived: '125000.00'
+                outstandingAmount: '18500.00'
+                overdueInvoiceCount: 7
+                mrr: '95000.00'
+                arr: '1140000.00'
+                totalInvoices: 342
+                upcomingRenewals: 18
+                currency: INR
+                asOf: '2026-10-31T04:00:00Z'
+  /api/v1/analytics/revenue:
+    get:
+      tags: [Analytics]
+      operationId: getRevenueSeries
+      summary: Get revenue time series
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: groupBy
+          in: query
+          schema: { type: string, enum: [DAY, WEEK, MONTH], default: MONTH }
+      responses:
+        '200':
+          description: Revenue series.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [currency, points]
+                properties:
+                  currency: { type: string, example: INR }
+                  points:
+                    type: array
+                    items: { $ref: '#/components/schemas/RevenuePoint' }
+  /api/v1/analytics/renewals:
+    get:
+      tags: [Analytics]
+      operationId: getUpcomingRenewals
+      summary: List upcoming subscription renewals
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: days
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
+      responses:
+        '200':
+          description: Upcoming renewals.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/RenewalItem' }
+  /api/v1/analytics/overdue:
+    get:
+      tags: [Analytics]
+      operationId: getOverdueInvoices
+      summary: List overdue invoices
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Overdue invoices.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/OverdueInvoiceItem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Search:
+      name: search
+      in: query
+      schema: { type: string, maxLength: 120 }
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PlanId:
+      name: planId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TaxRuleId:
+      name: taxRuleId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DiscountRuleId:
+      name: discountRuleId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    QuotationId:
+      name: quotationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SubscriptionId:
+      name: subscriptionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    InvoiceId:
+      name: invoiceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-generated unique key to safely retry a create/payment request.
+      schema: { type: string, minLength: 8, maxLength: 100 }
+  responses:
+    BadRequest:
+      description: Request could not be processed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Authentication is missing or invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Authenticated user does not have permission.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Requested record was not found or is not visible to caller.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Request conflicts with current resource state or uniqueness rules.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ValidationError:
+      description: One or more input fields are invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+    Money:
+      type: string
+      pattern: '^-?\d{1,14}(\.\d{1,4})?$'
+      description: Decimal string. Never send a JSON floating-point number for money.
+      examples: ['560.00', '1056.00']
+    Currency:
+      type: string
+      minLength: 3
+      maxLength: 3
+      description: ISO 4217 currency code; configurable business default.
+      example: INR
+    Password:
+      type: string
+      minLength: 9
+      maxLength: 128
+      description: Must contain uppercase, lowercase and special character (brief requires more than 8 characters).
+      format: password
+    Role:
+      type: string
+      enum: [ADMIN, STAFF, CUSTOMER]
+    User:
+      type: object
+      required: [id, email, fullName, role, isActive, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        email: { type: string, format: email }
+        fullName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        customerId: { $ref: '#/components/schemas/UUID' }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    RegisterRequest:
+      type: object
+      required: [fullName, email, password]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { $ref: '#/components/schemas/Password' }
+        businessName: { type: string, maxLength: 160 }
+        phone: { type: string, maxLength: 30 }
+    StaffCreateRequest:
+      type: object
+      required: [fullName, email, password]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { $ref: '#/components/schemas/Password' }
+        phone: { type: string, maxLength: 30 }
+        isActive: { type: boolean, default: true }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1, format: password }
+    TokenResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, description: Access token lifetime in seconds. }
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer }
+        user: { $ref: '#/components/schemas/User' }
+        customer: { $ref: '#/components/schemas/Customer' }
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field: { type: string }
+        message: { type: string }
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: VALIDATION_ERROR }
+        message: { type: string, example: One or more fields are invalid. }
+        fieldErrors:
+          type: array
+          items: { $ref: '#/components/schemas/FieldError' }
+        requestId: { type: string }
+    PaginatedResponse:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items: { type: array, items: {} }
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1 }
+    Address:
+      type: object
+      properties:
+        line1: { type: string, maxLength: 160 }
+        line2: { type: string, maxLength: 160 }
+        city: { type: string, maxLength: 100 }
+        state: { type: string, maxLength: 100 }
+        stateCode: { type: string, maxLength: 10, description: State code used by configured GST place-of-supply logic where applicable. }
+        postalCode: { type: string, maxLength: 20 }
+        countryCode: { type: string, minLength: 2, maxLength: 2, example: IN }
+    Customer:
+      type: object
+      required: [id, name, email, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        userId: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        email: { type: string, format: email }
+        businessName: { type: string }
+        phone: { type: string }
+        billingAddress: { $ref: '#/components/schemas/Address' }
+        shippingAddress: { $ref: '#/components/schemas/Address' }
+        gstin: { type: string, description: Optional customer GST registration identifier. }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        createdAt: { type: string, format: date-time }
+    CustomerCreate:
+      type: object
+      required: [name, email]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        email: { type: string, format: email }
+        businessName: { type: string, maxLength: 160 }
+        phone: { type: string, maxLength: 30 }
+        billingAddress: { $ref: '#/components/schemas/Address' }
+        shippingAddress: { $ref: '#/components/schemas/Address' }
+        gstin: { type: string, maxLength: 20 }
+    CustomerUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        email: { type: string, format: email }
+        businessName: { type: string, maxLength: 160 }
+        phone: { type: string, maxLength: 30 }
+        billingAddress: { $ref: '#/components/schemas/Address' }
+        shippingAddress: { $ref: '#/components/schemas/Address' }
+        gstin: { type: string, maxLength: 20 }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+    ProductType:
+      type: string
+      enum: [SOFTWARE, SERVICE, PHYSICAL, OTHER]
+    ProductVariant:
+      type: object
+      required: [id, attributeName, attributeValue, priceAdjustment, isActive]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        attributeName: { type: string, example: Brand }
+        attributeValue: { type: string, example: Odoo }
+        priceAdjustment: { $ref: '#/components/schemas/Money' }
+        isActive: { type: boolean }
+    ProductVariantInput:
+      type: object
+      required: [attributeName, attributeValue, priceAdjustment]
+      properties:
+        attributeName: { type: string, minLength: 1, maxLength: 80 }
+        attributeValue: { type: string, minLength: 1, maxLength: 120 }
+        priceAdjustment: { $ref: '#/components/schemas/Money' }
+    Product:
+      type: object
+      required: [id, name, type, salesPrice, costPrice, currency, variants, isActive, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/ProductType' }
+        salesPrice: { $ref: '#/components/schemas/Money' }
+        costPrice: { $ref: '#/components/schemas/Money', description: Admin-only field; never expose to staff/customer unless explicitly authorized. }
+        currency: { $ref: '#/components/schemas/Currency' }
+        notes: { type: string }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ProductVariant' }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    ProductCreate:
+      type: object
+      required: [name, type, salesPrice, costPrice, currency]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        type: { $ref: '#/components/schemas/ProductType' }
+        salesPrice: { $ref: '#/components/schemas/Money' }
+        costPrice: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        notes: { type: string, maxLength: 2000 }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ProductVariantInput' }
+    ProductUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        type: { $ref: '#/components/schemas/ProductType' }
+        salesPrice: { $ref: '#/components/schemas/Money' }
+        costPrice: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        notes: { type: string, maxLength: 2000 }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ProductVariantInput' }
+        isActive: { type: boolean }
+    BillingInterval:
+      type: string
+      enum: [DAILY, WEEKLY, MONTHLY, YEARLY]
+    Plan:
+      type: object
+      required: [id, name, price, currency, billingInterval, intervalCount, minQuantity, autoCloseAtEnd, allowEarlyClose, allowPause, allowRenewal, isActive]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        description: { type: string }
+        price: { $ref: '#/components/schemas/Money', description: 'Provisional assumption: recurring base plan fee. Confirm whether this should instead be a pricing template.' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        billingInterval: { $ref: '#/components/schemas/BillingInterval' }
+        intervalCount: { type: integer, minimum: 1, default: 1 }
+        minQuantity: { type: integer, minimum: 1 }
+        availableFrom: { type: string, format: date }
+        availableUntil: { type: string, format: date }
+        autoCloseAtEnd: { type: boolean }
+        allowEarlyClose: { type: boolean }
+        allowPause: { type: boolean }
+        allowRenewal: { type: boolean }
+        isActive: { type: boolean }
+    PlanCreate:
+      type: object
+      required: [name, price, currency, billingInterval, minQuantity]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        price: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        billingInterval: { $ref: '#/components/schemas/BillingInterval' }
+        intervalCount: { type: integer, minimum: 1, default: 1 }
+        minQuantity: { type: integer, minimum: 1 }
+        availableFrom: { type: string, format: date }
+        availableUntil: { type: string, format: date }
+        autoCloseAtEnd: { type: boolean, default: false }
+        allowEarlyClose: { type: boolean, default: false }
+        allowPause: { type: boolean, default: false }
+        allowRenewal: { type: boolean, default: true }
+    PlanUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        price: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        billingInterval: { $ref: '#/components/schemas/BillingInterval' }
+        intervalCount: { type: integer, minimum: 1 }
+        minQuantity: { type: integer, minimum: 1 }
+        availableFrom: { type: string, format: date }
+        availableUntil: { type: string, format: date }
+        autoCloseAtEnd: { type: boolean }
+        allowEarlyClose: { type: boolean }
+        allowPause: { type: boolean }
+        allowRenewal: { type: boolean }
+        isActive: { type: boolean }
+    TaxType:
+      type: string
+      enum: [GENERIC, CGST, SGST, IGST, OTHER]
+    TaxRule:
+      type: object
+      required: [id, name, code, taxType, ratePercent, isActive]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        code: { type: string }
+        taxType: { $ref: '#/components/schemas/TaxType' }
+        ratePercent: { type: string, pattern: '^\d{1,3}(\.\d{1,4})?$' }
+        jurisdiction: { type: string, description: Configurable jurisdiction/state applicability. }
+        isActive: { type: boolean }
+    TaxRuleCreate:
+      type: object
+      required: [name, code, taxType, ratePercent]
+      properties:
+        name: { type: string, maxLength: 120 }
+        code: { type: string, maxLength: 40 }
+        taxType: { $ref: '#/components/schemas/TaxType' }
+        ratePercent: { type: string, pattern: '^\d{1,3}(\.\d{1,4})?$' }
+        jurisdiction: { type: string, maxLength: 120 }
+        isActive: { type: boolean, default: true }
+    TaxRuleUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 120 }
+        code: { type: string, maxLength: 40 }
+        taxType: { $ref: '#/components/schemas/TaxType' }
+        ratePercent: { type: string, pattern: '^\d{1,3}(\.\d{1,4})?$' }
+        jurisdiction: { type: string, maxLength: 120 }
+        isActive: { type: boolean }
+    DiscountType:
+      type: string
+      enum: [FIXED, PERCENTAGE]
+    DiscountScope:
+      type: string
+      enum: [PRODUCT, SUBSCRIPTION]
+    DiscountRule:
+      type: object
+      required: [id, name, discountType, value, scope, startsAt, endsAt, usedCount, isActive]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        discountType: { $ref: '#/components/schemas/DiscountType' }
+        value: { $ref: '#/components/schemas/Money', description: Fixed discount amount or percentage numeric value represented as decimal string. }
+        scope: { $ref: '#/components/schemas/DiscountScope' }
+        productIds: { type: array, items: { $ref: '#/components/schemas/UUID' } }
+        minimumPurchase: { $ref: '#/components/schemas/Money' }
+        minimumQuantity: { type: integer, minimum: 1 }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        maxUses: { type: integer, minimum: 1 }
+        usedCount: { type: integer, minimum: 0 }
+        isActive: { type: boolean }
+    DiscountRuleCreate:
+      type: object
+      required: [name, discountType, value, scope, startsAt, endsAt]
+      properties:
+        name: { type: string, maxLength: 160 }
+        discountType: { $ref: '#/components/schemas/DiscountType' }
+        value: { type: string, pattern: '^\d{1,14}(\.\d{1,4})?$' }
+        scope: { $ref: '#/components/schemas/DiscountScope' }
+        productIds: { type: array, items: { $ref: '#/components/schemas/UUID' } }
+        minimumPurchase: { $ref: '#/components/schemas/Money' }
+        minimumQuantity: { type: integer, minimum: 1 }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        maxUses: { type: integer, minimum: 1 }
+        isActive: { type: boolean, default: true }
+    DiscountRuleUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 160 }
+        value: { type: string, pattern: '^\d{1,14}(\.\d{1,4})?$' }
+        minimumPurchase: { $ref: '#/components/schemas/Money' }
+        minimumQuantity: { type: integer, minimum: 1 }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        maxUses: { type: integer, minimum: 1 }
+        isActive: { type: boolean }
+    QuoteTemplate:
+      type: object
+      required: [id, name, validityDays, planId, lines]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        validityDays: { type: integer, minimum: 1 }
+        planId: { $ref: '#/components/schemas/UUID' }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+        isActive: { type: boolean }
+    QuoteTemplateCreate:
+      type: object
+      required: [name, validityDays, planId, lines]
+      properties:
+        name: { type: string, maxLength: 160 }
+        validityDays: { type: integer, minimum: 1 }
+        planId: { $ref: '#/components/schemas/UUID' }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+    QuoteTemplateUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 160 }
+        validityDays: { type: integer, minimum: 1 }
+        planId: { $ref: '#/components/schemas/UUID' }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+        isActive: { type: boolean }
+    QuotationStatus:
+      type: string
+      enum: [DRAFT, QUOTATION, CONFIRMED, REJECTED, EXPIRED]
+    SubscriptionLineInput:
+      type: object
+      required: [productId, quantity, selectedVariantIds]
+      properties:
+        productId: { $ref: '#/components/schemas/UUID' }
+        quantity: { type: integer, minimum: 1 }
+        selectedVariantIds: { type: array, items: { $ref: '#/components/schemas/UUID' } }
+        taxRuleIds: { type: array, items: { $ref: '#/components/schemas/UUID' } }
+    QuotationCreate:
+      type: object
+      required: [customerId, planId, startDate, lines]
+      properties:
+        customerId: { $ref: '#/components/schemas/UUID' }
+        templateId: { $ref: '#/components/schemas/UUID' }
+        planId: { $ref: '#/components/schemas/UUID' }
+        startDate: { type: string, format: date }
+        paymentTerms: { type: string, maxLength: 500 }
+        validityDays: { type: integer, minimum: 1, description: Overrides template validity when supplied. }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+    Quotation:
+      type: object
+      required: [id, number, customerId, planId, status, startDate, expiresAt, lines, subtotal, taxTotal, discountTotal, total, currency, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        number: { type: string }
+        customerId: { $ref: '#/components/schemas/UUID' }
+        customerName: { type: string }
+        planId: { $ref: '#/components/schemas/UUID' }
+        planName: { type: string }
+        status: { $ref: '#/components/schemas/QuotationStatus' }
+        startDate: { type: string, format: date }
+        expiresAt: { type: string, format: date-time }
+        paymentTerms: { type: string }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceLine' }
+        subtotal: { $ref: '#/components/schemas/Money' }
+        taxTotal: { $ref: '#/components/schemas/Money' }
+        discountTotal: { $ref: '#/components/schemas/Money' }
+        total: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        subscriptionId: { $ref: '#/components/schemas/UUID' }
+        createdAt: { type: string, format: date-time }
+    SubscriptionStatus:
+      type: string
+      enum: [DRAFT, QUOTATION, CONFIRMED, ACTIVE, PAUSED, CLOSED]
+    Subscription:
+      type: object
+      required: [id, number, customerId, planId, status, startDate, expiryDate, nextBillingDate, lines, currency, cancelAtPeriodEnd]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        number: { type: string }
+        customerId: { $ref: '#/components/schemas/UUID' }
+        customerName: { type: string }
+        planId: { $ref: '#/components/schemas/UUID' }
+        planName: { type: string }
+        quotationId: { $ref: '#/components/schemas/UUID' }
+        status: { $ref: '#/components/schemas/SubscriptionStatus' }
+        startDate: { type: string, format: date }
+        expiryDate: { type: string, format: date }
+        nextBillingDate: { type: string, format: date }
+        billingInterval: { $ref: '#/components/schemas/BillingInterval' }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceLine' }
+        recurringSubtotal: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        cancelAtPeriodEnd: { type: boolean }
+        cancellationRequestedAt: { type: string, format: date-time }
+        pausedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    SubscriptionCreate:
+      type: object
+      required: [customerId, planId, startDate, lines]
+      properties:
+        customerId: { $ref: '#/components/schemas/UUID' }
+        planId: { $ref: '#/components/schemas/UUID' }
+        quotationId: { $ref: '#/components/schemas/UUID' }
+        startDate: { type: string, format: date }
+        paymentTerms: { type: string, maxLength: 500 }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+    PlanChangeResult:
+      type: object
+      required: [subscription, adjustmentAmount, currency, effectiveAt, adjustmentType]
+      properties:
+        subscription: { $ref: '#/components/schemas/Subscription' }
+        adjustmentAmount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        effectiveAt: { type: string, format: date-time }
+        adjustmentType: { type: string, enum: [NO_CHARGE, IMMEDIATE_UPGRADE_DIFFERENCE, DEFERRED_DOWNGRADE, CUSTOM] }
+        invoiceId: { $ref: '#/components/schemas/UUID' }
+        message: { type: string }
+    InvoiceStatus:
+      type: string
+      enum: [DRAFT, CONFIRMED, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED]
+    InvoiceTax:
+      type: object
+      required: [name, code, ratePercent, amount]
+      properties:
+        name: { type: string }
+        code: { type: string }
+        ratePercent: { type: string }
+        amount: { $ref: '#/components/schemas/Money' }
+    InvoiceLine:
+      type: object
+      required: [description, quantity, unitPrice, lineSubtotal, taxAmount, discountAmount, lineTotal]
+      properties:
+        productId: { $ref: '#/components/schemas/UUID' }
+        description: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        selectedVariants: { type: array, items: { type: string } }
+        taxes: { type: array, items: { $ref: '#/components/schemas/InvoiceTax' } }
+        lineSubtotal: { $ref: '#/components/schemas/Money' }
+        taxAmount: { $ref: '#/components/schemas/Money' }
+        discountAmount: { $ref: '#/components/schemas/Money' }
+        lineTotal: { $ref: '#/components/schemas/Money' }
+    Invoice:
+      type: object
+      required: [id, number, customerId, subscriptionId, status, issueDate, dueDate, lines, subtotal, taxTotal, discountTotal, total, amountPaid, amountDue, currency]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        number: { type: string }
+        customerId: { $ref: '#/components/schemas/UUID' }
+        customerName: { type: string }
+        subscriptionId: { $ref: '#/components/schemas/UUID' }
+        status: { $ref: '#/components/schemas/InvoiceStatus' }
+        issueDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceLine' }
+        subtotal: { $ref: '#/components/schemas/Money' }
+        taxTotal: { $ref: '#/components/schemas/Money' }
+        discountTotal: { $ref: '#/components/schemas/Money' }
+        total: { $ref: '#/components/schemas/Money' }
+        amountPaid: { $ref: '#/components/schemas/Money' }
+        amountDue: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        sentAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    PaymentMethod:
+      type: string
+      enum: [CASH, BANK_TRANSFER, UPI, CARD, CHEQUE, GATEWAY, OTHER]
+    Payment:
+      type: object
+      required: [id, invoiceId, customerId, method, amount, currency, paidAt, status]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        invoiceId: { $ref: '#/components/schemas/UUID' }
+        customerId: { $ref: '#/components/schemas/UUID' }
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        amount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        paidAt: { type: string, format: date-time }
+        note: { type: string }
+        reference: { type: string }
+        status: { type: string, enum: [PENDING, SUCCEEDED, FAILED, REFUNDED] }
+        createdAt: { type: string, format: date-time }
+    PaymentCreate:
+      type: object
+      required: [invoiceId, method, amount, currency, paidAt]
+      properties:
+        invoiceId: { $ref: '#/components/schemas/UUID' }
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        amount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        paidAt: { type: string, format: date-time }
+        note: { type: string, maxLength: 500 }
+        reference: { type: string, maxLength: 120 }
+    GatewayIntent:
+      type: object
+      required: [provider, providerIntentId, checkoutUrl, status]
+      properties:
+        provider: { type: string }
+        providerIntentId: { type: string }
+        checkoutUrl: { type: string, format: uri }
+        status: { type: string, enum: [CREATED, PENDING] }
+    DashboardSummary:
+      type: object
+      required: [activeSubscriptions, revenueReceived, outstandingAmount, overdueInvoiceCount, mrr, arr, totalInvoices, upcomingRenewals, currency, asOf]
+      properties:
+        activeSubscriptions: { type: integer, minimum: 0 }
+        revenueReceived: { $ref: '#/components/schemas/Money', description: Payments successfully received in the selected reporting interval. }
+        outstandingAmount: { $ref: '#/components/schemas/Money' }
+        overdueInvoiceCount: { type: integer, minimum: 0 }
+        mrr: { $ref: '#/components/schemas/Money', description: Normalized monthly recurring value of active subscriptions, excluding one-time amounts and taxes unless finance policy specifies otherwise. }
+        arr: { $ref: '#/components/schemas/Money', description: MRR multiplied by 12 under the initial dashboard definition. }
+        totalInvoices: { type: integer, minimum: 0 }
+        upcomingRenewals: { type: integer, minimum: 0 }
+        currency: { $ref: '#/components/schemas/Currency' }
+        asOf: { type: string, format: date-time }
+    RevenuePoint:
+      type: object
+      required: [period, amount]
+      properties:
+        period: { type: string, description: ISO date/month bucket label. }
+        amount: { $ref: '#/components/schemas/Money' }
+    RenewalItem:
+      type: object
+      required: [subscriptionId, subscriptionNumber, customerName, renewalDate, expectedAmount, currency]
+      properties:
+        subscriptionId: { $ref: '#/components/schemas/UUID' }
+        subscriptionNumber: { type: string }
+        customerName: { type: string }
+        renewalDate: { type: string, format: date }
+        expectedAmount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+    OverdueInvoiceItem:
+      type: object
+      required: [invoiceId, invoiceNumber, customerName, dueDate, amountDue, currency, daysOverdue]
+      properties:
+        invoiceId: { $ref: '#/components/schemas/UUID' }
+        invoiceNumber: { type: string }
+        customerName: { type: string }
+        dueDate: { type: string, format: date }
+        amountDue: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        daysOverdue: { type: integer, minimum: 1 }
