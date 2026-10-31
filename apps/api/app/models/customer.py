@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import (
+    Boolean,
     ForeignKey,
     Index,
     String,
@@ -83,6 +84,12 @@ class Customer(UUIDTimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(
         Text,
         nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true"
     )
 
     user: Mapped["User | None"] = relationship(

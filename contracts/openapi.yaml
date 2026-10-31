@@ -240,89 +240,171 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
-  /api/v1/customers:
+
+  /api/v1/customers/me:
     get:
-      tags: [Customers]
-      operationId: listCustomers
-      summary: List customers
-      description: ADMIN and STAFF. CUSTOMER role must use its own customer profile from /auth/me or customer portal endpoints.
+      tags: [Customer Management, Customer Portal]
+      operationId: getMyCustomerProfile
+      summary: Get the authenticated customer's own profile
       security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/Search'
-        - name: status
-          in: query
-          schema: { type: string, enum: [ACTIVE, INACTIVE] }
       responses:
         '200':
-          description: Paginated customers.
+          description: Customer profile.
           content:
             application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/PaginatedResponse'
-                  - type: object
-                    properties:
-                      items:
-                        type: array
-                        items: { $ref: '#/components/schemas/Customer' }
+              schema: { $ref: '#/components/schemas/CustomerProfileRead' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-    post:
-      tags: [Customers]
-      operationId: createCustomer
-      summary: Create a customer profile (staff/admin)
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Customer Management, Customer Portal]
+      operationId: updateMyCustomerProfile
+      summary: Update the authenticated customer's own profile
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CustomerCreate' }
+            schema: { $ref: '#/components/schemas/CustomerSelfUpdateRequest' }
+      responses:
+        '200':
+          description: Updated customer profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerProfileRead' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/customers:
+    get:
+      tags: [Customer Management]
+      operationId: listCustomers
+      summary: List, search and paginate customers
+      description: Admin and Staff only.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: include_inactive
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Paginated customers.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+    post:
+      tags: [Customer Management]
+      operationId: createCustomer
+      summary: Create a customer profile
+      description: Admin and Staff only. New profiles are not automatically linked to login accounts.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerCreateRequest' }
       responses:
         '201':
           description: Customer created.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
-  /api/v1/customers/{customerId}:
+
+  /api/v1/customers/{customer_id}:
     parameters:
-      - $ref: '#/components/parameters/CustomerId'
+      - name: customer_id
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/UUID' }
+
     get:
-      tags: [Customers]
+      tags: [Customer Management]
       operationId: getCustomer
-      summary: Get customer detail
+      summary: Get customer details
+      description: Admin and Staff only. Archived profiles can also be retrieved by ID.
       security: [{ bearerAuth: [] }]
       responses:
         '200':
-          description: Customer detail.
+          description: Customer details.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
     patch:
-      tags: [Customers]
+      tags: [Customer Management]
       operationId: updateCustomer
-      summary: Update customer profile
+      summary: Update a customer
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CustomerUpdate' }
+            schema: { $ref: '#/components/schemas/CustomerUpdateRequest' }
       responses:
         '200':
           description: Updated customer.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+
+    delete:
+      tags: [Customer Management]
+      operationId: archiveCustomer
+      summary: Soft archive a customer
+      description: Sets is_active to false. The database record is retained.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Customer archived. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/customers/{customer_id}/restore:
+    parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/UUID' }
+    post:
+      tags: [Customer Management]
+      operationId: restoreCustomer
+      summary: Restore an archived customer
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Customer restored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 
   /api/v1/products:
     get:
@@ -1524,41 +1606,132 @@ components:
         countryCode: { type: string, minLength: 2, maxLength: 2, example: IN }
     Customer:
       type: object
-      required: [id, name, email, status, createdAt]
+      required:
+        - id
+        - user_id
+        - display_name
+        - company_name
+        - billing_email
+        - phone
+        - tax_identifier
+        - billing_address_line1
+        - billing_address_line2
+        - billing_city
+        - billing_state
+        - billing_postal_code
+        - billing_country_code
+        - notes
+        - is_active
+        - created_at
+        - updated_at
       properties:
         id: { $ref: '#/components/schemas/UUID' }
-        userId: { $ref: '#/components/schemas/UUID' }
-        name: { type: string }
-        email: { type: string, format: email }
-        businessName: { type: string }
-        phone: { type: string }
-        billingAddress: { $ref: '#/components/schemas/Address' }
-        shippingAddress: { $ref: '#/components/schemas/Address' }
-        gstin: { type: string, description: Optional customer GST registration identifier. }
-        status: { type: string, enum: [ACTIVE, INACTIVE] }
-        createdAt: { type: string, format: date-time }
-    CustomerCreate:
+        user_id:
+          anyOf:
+            - { $ref: '#/components/schemas/UUID' }
+            - { type: "null" }
+        display_name: { type: string, maxLength: 200 }
+        company_name: { type: [string, "null"], maxLength: 200 }
+        billing_email: { type: string, format: email, maxLength: 320 }
+        phone: { type: [string, "null"], maxLength: 30 }
+        tax_identifier: { type: [string, "null"], maxLength: 50 }
+        billing_address_line1: { type: [string, "null"], maxLength: 255 }
+        billing_address_line2: { type: [string, "null"], maxLength: 255 }
+        billing_city: { type: [string, "null"], maxLength: 100 }
+        billing_state: { type: [string, "null"], maxLength: 100 }
+        billing_postal_code: { type: [string, "null"], maxLength: 20 }
+        billing_country_code: { type: [string, "null"], minLength: 2, maxLength: 2 }
+        notes: { type: [string, "null"] }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CustomerProfileRead:
       type: object
-      required: [name, email]
+      required:
+        - id
+        - display_name
+        - company_name
+        - billing_email
+        - phone
+        - tax_identifier
+        - billing_address_line1
+        - billing_address_line2
+        - billing_city
+        - billing_state
+        - billing_postal_code
+        - billing_country_code
+        - is_active
+        - created_at
+        - updated_at
       properties:
-        name: { type: string, minLength: 1, maxLength: 160 }
-        email: { type: string, format: email }
-        businessName: { type: string, maxLength: 160 }
-        phone: { type: string, maxLength: 30 }
-        billingAddress: { $ref: '#/components/schemas/Address' }
-        shippingAddress: { $ref: '#/components/schemas/Address' }
-        gstin: { type: string, maxLength: 20 }
-    CustomerUpdate:
+        id: { $ref: '#/components/schemas/UUID' }
+        display_name: { type: string }
+        company_name: { type: [string, "null"] }
+        billing_email: { type: string, format: email }
+        phone: { type: [string, "null"] }
+        tax_identifier: { type: [string, "null"] }
+        billing_address_line1: { type: [string, "null"] }
+        billing_address_line2: { type: [string, "null"] }
+        billing_city: { type: [string, "null"] }
+        billing_state: { type: [string, "null"] }
+        billing_postal_code: { type: [string, "null"] }
+        billing_country_code: { type: [string, "null"] }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CustomerCreateRequest:
       type: object
+      additionalProperties: false
+      required: [display_name, billing_email]
       properties:
-        name: { type: string, minLength: 1, maxLength: 160 }
-        email: { type: string, format: email }
-        businessName: { type: string, maxLength: 160 }
-        phone: { type: string, maxLength: 30 }
-        billingAddress: { $ref: '#/components/schemas/Address' }
-        shippingAddress: { $ref: '#/components/schemas/Address' }
-        gstin: { type: string, maxLength: 20 }
-        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        display_name: { type: string, minLength: 1, maxLength: 200 }
+        company_name: { type: [string, "null"], maxLength: 200 }
+        billing_email: { type: string, format: email }
+        phone: { type: [string, "null"], maxLength: 30 }
+        tax_identifier: { type: [string, "null"], maxLength: 50 }
+        billing_address_line1: { type: [string, "null"], maxLength: 255 }
+        billing_address_line2: { type: [string, "null"], maxLength: 255 }
+        billing_city: { type: [string, "null"], maxLength: 100 }
+        billing_state: { type: [string, "null"], maxLength: 100 }
+        billing_postal_code: { type: [string, "null"], maxLength: 20 }
+        billing_country_code: { type: [string, "null"], minLength: 2, maxLength: 2 }
+        notes: { type: [string, "null"] }
+
+    CustomerUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 200 }
+        company_name: { type: [string, "null"], maxLength: 200 }
+        billing_email: { type: string, format: email }
+        phone: { type: [string, "null"], maxLength: 30 }
+        tax_identifier: { type: [string, "null"], maxLength: 50 }
+        billing_address_line1: { type: [string, "null"], maxLength: 255 }
+        billing_address_line2: { type: [string, "null"], maxLength: 255 }
+        billing_city: { type: [string, "null"], maxLength: 100 }
+        billing_state: { type: [string, "null"], maxLength: 100 }
+        billing_postal_code: { type: [string, "null"], maxLength: 20 }
+        billing_country_code: { type: [string, "null"], minLength: 2, maxLength: 2 }
+        notes: { type: [string, "null"] }
+
+    CustomerSelfUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 200 }
+        company_name: { type: [string, "null"], maxLength: 200 }
+        billing_email: { type: string, format: email }
+        phone: { type: [string, "null"], maxLength: 30 }
+        tax_identifier: { type: [string, "null"], maxLength: 50 }
+        billing_address_line1: { type: [string, "null"], maxLength: 255 }
+        billing_address_line2: { type: [string, "null"], maxLength: 255 }
+        billing_city: { type: [string, "null"], maxLength: 100 }
+        billing_state: { type: [string, "null"], maxLength: 100 }
+        billing_postal_code: { type: [string, "null"], maxLength: 20 }
+        billing_country_code: { type: [string, "null"], minLength: 2, maxLength: 2 }
+
     ProductType:
       type: string
       enum: [SOFTWARE, SERVICE, PHYSICAL, OTHER]
