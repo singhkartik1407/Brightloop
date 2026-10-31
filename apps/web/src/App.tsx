@@ -126,7 +126,7 @@ export default function App() {
 
   // Payloads
   const [newCustomer, setNewCustomer] = useState({ displayName: "", companyName: "", billingEmail: "", phone: "" });
-  const [newSub, setNewSub] = useState({ customerId: "", planId: "" });
+  const [newSub, setNewSub] = useState({ customerId: "", planId: "", productId: "" });
   const [newPlan, setNewPlan] = useState({
     name: "",
     price: "",
@@ -184,15 +184,16 @@ export default function App() {
       setAnalytics(analyticsData);
 
       if (custsData.length > 0) {
-        setNewSub((prev) => ({ ...prev, customerId: custsData[0].id }));
-        setNewQuote((prev) => ({ ...prev, customerId: custsData[0].id }));
+        setNewSub((prev) => ({ ...prev, customerId: prev.customerId || custsData[0].id }));
+        setNewQuote((prev) => ({ ...prev, customerId: prev.customerId || custsData[0].id }));
       }
       if (plansData.length > 0) {
-        setNewSub((prev) => ({ ...prev, planId: plansData[0].id }));
-        setNewQuote((prev) => ({ ...prev, planId: plansData[0].id }));
+        setNewSub((prev) => ({ ...prev, planId: prev.planId || plansData[0].id }));
+        setNewQuote((prev) => ({ ...prev, planId: prev.planId || plansData[0].id }));
       }
       if (prodsData.length > 0) {
-        setNewQuote((prev) => ({ ...prev, productId: prodsData[0].id, unitPrice: String(prodsData[0].basePrice) }));
+        setNewSub((prev) => ({ ...prev, productId: prev.productId || prodsData[0].id }));
+        setNewQuote((prev) => ({ ...prev, productId: prev.productId || prodsData[0].id, unitPrice: String(prodsData[0].basePrice) }));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load live backend records.";
@@ -351,6 +352,7 @@ export default function App() {
     }
   };
 
+  // Fixed: passes valid productId in lines, excludes planId, variantId, unitPrice from lines
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
@@ -358,7 +360,11 @@ export default function App() {
       setModalError("Select both customer and plan.");
       return;
     }
-    const matchedPlan = plans.find((p) => p.id === newSub.planId);
+    const resolvedProductId = newSub.productId || (products[0] ? products[0].id : null);
+    if (!resolvedProductId) {
+      setModalError("No product found in catalog. Please create a catalog product first.");
+      return;
+    }
     setModalSubmitting(true);
     try {
       const created = await createSubscription({
@@ -366,9 +372,8 @@ export default function App() {
         planId: newSub.planId,
         lines: [
           {
-            planId: newSub.planId,
+            productId: resolvedProductId,
             quantity: 1,
-            unitPrice: matchedPlan ? matchedPlan.price : "499.00",
           },
         ],
       });
@@ -1205,7 +1210,7 @@ export default function App() {
                           <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-zinc-800/60 text-xs font-mono">
+                      <tbody className="divide-y divide-zinc-800/60 font-mono text-xs">
                         {invoices.length === 0 ? (
                           <tr><td colSpan={6} className="py-8 text-center text-zinc-500">No invoices generated yet.</td></tr>
                         ) : (
@@ -1539,7 +1544,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Subscription */}
+      {/* Modal: Subscription (Clean line with valid productId) */}
       {isSubModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 p-6 space-y-5">
@@ -1561,6 +1566,14 @@ export default function App() {
                   {plans.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.currency} {p.price} ({p.billingInterval})</option>)}
                 </select>
               </div>
+              {products.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Catalog Product *</Label>
+                  <select value={newSub.productId || products[0].id} onChange={(e) => setNewSub({ ...newSub, productId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
+                    {products.map((pr) => <option key={pr.id} value={pr.id}>{pr.name} ({pr.sku})</option>)}
+                  </select>
+                </div>
+              )}
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setIsSubModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
                 <Button type="submit" disabled={modalSubmitting || customers.length === 0 || plans.length === 0} className="bg-blue-600 hover:bg-blue-500 text-xs text-white">Confirm & Provision</Button>

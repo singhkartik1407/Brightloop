@@ -1,4 +1,4 @@
-export type BillingInterval = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+﻿export type BillingInterval = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 export type SubscriptionStatus = "DRAFT" | "TRIAL" | "ACTIVE" | "PAUSED" | "PAST_DUE" | "CANCELED" | "CLOSED";
 export type UserRole = "ADMIN" | "STAFF" | "CUSTOMER";
 export type InvoiceStatus = "DRAFT" | "CONFIRMED" | "PARTIALLY_PAID" | "OVERDUE" | "PAID" | "CANCELLED";
@@ -7,7 +7,7 @@ export type PaymentStatus = "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED";
 export type NotificationType = "INVOICE_ISSUED" | "INVOICE_SENT" | "PAYMENT_RECEIVED" | "SUBSCRIPTION_UPGRADED" | "OTHER";
 export type TaxType = "GENERIC" | "CGST" | "SGST" | "IGST" | "OTHER";
 export type DiscountType = "FIXED" | "PERCENTAGE";
-export type QuotationStatus = "DRAFT" | "QUOTATION" | "SENT" | "CONFIRMED" | "ACCEPTED" | "REJECTED" | "EXPIRED";
+export type QuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED";
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -32,7 +32,6 @@ export interface CustomerRecord {
   companyName: string | null;
   billingEmail: string;
   phone?: string | null;
-  billingState?: string | null;
   status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
   createdAt: string;
   updatedAt?: string;
@@ -160,11 +159,8 @@ export interface CreateQuotationPayload {
 }
 
 export interface SubscriptionLinePayload {
-  planId?: string;
-  productId?: string;
-  variantId?: string;
-  quantity: number;
-  unitPrice: string | number;
+  productId: string;
+  quantity?: number;
 }
 
 export interface SubscriptionItem {
