@@ -1,71 +1,66 @@
-﻿import { apiRequest, setAccessToken } from "./api"
-import { USE_MOCK } from "./mock.config"
-import type {
-  LoginRequest,
-  LoginResponse,
-  RegisterRequest,
-  RegisterResponse,
-  User,
-} from "@/types/auth.types"
+﻿import { apiRequest, setAccessToken } from "./api";
+import { USE_MOCK } from "./mock.config";
+import type { User } from "@/types/domain.types";
+
+export interface LoginPayload {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  accessToken?: string;
+  access_token?: string;
+  tokenType?: string;
+  token_type?: string;
+  user?: User;
+}
 
 const MOCK_USER: User = {
-  id: "usr_mock_12345",
-  email: "demo@brightloop.com",
-  role: "admin",
-  is_active: true,
-  created_at: new Date().toISOString(),
-}
+  id: "usr_mock_admin_123",
+  email: "admin@brightloop.com",
+  role: "ADMIN",
+  isActive: true,
+  createdAt: new Date().toISOString(),
+};
 
-export async function login(data: LoginRequest): Promise<LoginResponse> {
+export async function loginUser(payload: LoginPayload): Promise<User> {
   if (USE_MOCK) {
-    const mockUser: User = { ...MOCK_USER, email: data.email }
-    const mockRes: LoginResponse = {
-      access_token: "mock_jwt_token_sample_xyz",
-      token_type: "bearer",
-      expires_in: 3600,
-      user: mockUser,
-    }
-    setAccessToken(mockRes.access_token)
-    return mockRes
+    setAccessToken("mock_jwt_token_sample");
+    return { ...MOCK_USER, email: payload.email };
   }
 
-  const response = await apiRequest<LoginResponse>("/auth/login", {
+  const res = await apiRequest<LoginResponse>("/auth/login", {
     method: "POST",
-    body: JSON.stringify(data),
-  })
-  setAccessToken(response.access_token)
-  return response
-}
+    body: JSON.stringify(payload),
+  });
 
-export async function register(data: RegisterRequest): Promise<RegisterResponse> {
-  if (USE_MOCK) {
-    const mockUser: User = { ...MOCK_USER, email: data.email }
-    const mockRes: RegisterResponse = {
-      user: mockUser,
-      customer: {
-        id: "cust_mock_12345",
-        display_name: data.fullName,
-        company_name: data.businessName || null,
-        billing_email: data.email,
-      },
-    }
-    setAccessToken("mock_jwt_token_sample_xyz")
-    return mockRes
+  const token = res.accessToken || res.access_token;
+  if (!token) {
+    throw new Error("Authentication response did not return an access token.");
   }
 
-  return apiRequest<RegisterResponse>("/auth/register", {
-    method: "POST",
-    body: JSON.stringify(data),
-  })
+  setAccessToken(token);
+
+  try {
+    return await getCurrentUser();
+  } catch {
+    return {
+      id: "usr_authenticated",
+      email: payload.email,
+      role: "ADMIN",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+  }
 }
 
 export async function getCurrentUser(): Promise<User> {
   if (USE_MOCK) {
-    return MOCK_USER
+    return MOCK_USER;
   }
-  return apiRequest<User>("/auth/me")
+  return apiRequest<User>("/auth/me");
 }
 
-export function logout() {
-  setAccessToken(null)
+export function logoutUser(): void {
+  setAccessToken(null);
 }

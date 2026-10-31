@@ -1,48 +1,112 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:8000/api/v1"
+﻿import { APP_CONFIG } from "./mock.config";
 
-let accessToken: string | null = null
-
-export function setAccessToken(token: string | null) {
-  accessToken = token
+export interface ApiErrorDetail {
+  loc?: (string | number)[];
+  msg: string;
+  type?: string;
 }
 
-interface ApiError {
-  message: string
-  status: number
+export class ApiError extends Error {
+  public status: number;
+  public details: ApiErrorDetail[] | null;
+  public rawData: unknown;
+
+  constructor(status: number, message: string, details: ApiErrorDetail[] | null = null, rawData: unknown = null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.details = details;
+    this.rawData = rawData;
+  }
 }
 
-export async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const headers = new Headers(options.headers)
+const TOKEN_KEY = "brightloop_access_token";
 
-  headers.set("Content-Type", "application/json")
+export function getAccessToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
 
-  if (accessToken) {
-    headers.set("Authorization", `Bearer ${accessToken}`)
+export function setAccessToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const token = getAccessToken();
+
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const baseUrl = APP_CONFIG.API_BASE_URL.replace(/\/+\$/, "");
+  const url = `${baseUrl}${cleanEndpoint}`;
+
+  const headers = new Headers(options.headers || {});
+
+  if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  headers.set("Accept", "application/json");
+
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const config: RequestInit = {
     ...options,
     headers,
-  })
+  };
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-
-    const apiError: ApiError = {
-      message:
-        error.detail ||
-        error.message ||
-        "Something went wrong. Please try again.",
-      status: response.status,
-    }
-
-    throw apiError
+  let response: Response;
+  try {
+    response = await fetch(url, config);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Network failure. Backend may be offline.";
+    throw new ApiError(0, `Cannot connect to server: ${message}`);
   }
 
-  return response.json() as Promise<T>
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return {} as T;
+  }
+
+  let responseData: unknown = null;
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    try {
+      responseData = await response.json();
+    } catch {
+      responseData = null;
+    }
+  } else {
+    responseData = await response.text();
+  }
+
+  if (!response.ok) {
+    let errorMessage = `HTTP Error ${response.status}: ${response.statusText}`;
+    let details: ApiErrorDetail[] | null = null;
+
+    if (responseData && typeof responseData === "object") {
+      const dataObj = responseData as Record<string, unknown>;
+
+      if (Array.isArray(dataObj.detail)) {
+        details = dataObj.detail as ApiErrorDetail[];
+        errorMessage = details
+          .map((d) => (d.loc && d.loc.length > 0 ? `${d.loc.slice(1).join(".")}: ${d.msg}` : d.msg))
+          .join(" | ");
+      } else if (typeof dataObj.detail === "string") {
+        errorMessage = dataObj.detail;
+      } else if (typeof dataObj.message === "string") {
+        errorMessage = dataObj.message;
+      }
+    }
+
+    if (response.status === 401) {
+      setAccessToken(null);
+    }
+
+    throw new ApiError(response.status, errorMessage, details, responseData);
+  }
+
+  return responseData as T;
 }
