@@ -2,6 +2,7 @@ from app.models.base import Base
 from app.models.user import User, UserRole
 from app.models.customer import Customer
 from app.models.product import Product, ProductType, ProductVariant
+from app.models.plan import Plan, BillingInterval
 
 
 __all__ = [
@@ -12,4 +13,6 @@ __all__ = [
     "Product",
     "ProductType",
     "ProductVariant",
+    "Plan",
+    "BillingInterval",
 ]

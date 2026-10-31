@@ -539,6 +539,12 @@ paths:
         - name: isActive
           in: query
           schema: { type: boolean }
+        - name: productId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: billingInterval
+          in: query
+          schema: { $ref: '#/components/schemas/BillingInterval' }
       responses:
         '200':
           description: Paginated plans.
@@ -552,6 +558,9 @@ paths:
                       items:
                         type: array
                         items: { $ref: '#/components/schemas/Plan' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       tags: [Plans]
       operationId: createPlan
@@ -568,6 +577,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Plan' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Associated product not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/plans/{planId}:
     parameters:
@@ -583,7 +596,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Plan' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     patch:
       tags: [Plans]
       operationId: updatePlan
@@ -600,7 +616,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Plan' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Conflicting plan name or archived plan must be restored. }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/plans/{planId}/archive:
     post:
       tags: [Plans]
@@ -611,6 +632,29 @@ paths:
         - $ref: '#/components/parameters/PlanId'
       responses:
         '204': { description: Plan archived. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/plans/{planId}/restore:
+    post:
+      tags: [Plans]
+      operationId: restorePlan
+      summary: Restore an archived plan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          description: Plan restored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Restoring plan conflicts with an active plan name. }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /api/v1/tax-rules:
     get:
@@ -1821,36 +1865,39 @@ components:
       enum: [DAILY, WEEKLY, MONTHLY, YEARLY]
     Plan:
       type: object
-      required: [id, name, price, currency, billingInterval, intervalCount, minQuantity, autoCloseAtEnd, allowEarlyClose, allowPause, allowRenewal, isActive]
+      required: [id, name, price, currency, billingInterval, intervalCount, minQuantity, autoCloseAtEnd, allowEarlyClose, allowPause, allowRenewal, isActive, createdAt]
       properties:
         id: { $ref: '#/components/schemas/UUID' }
         name: { type: string }
-        description: { type: string }
+        description: { type: [string, "null"] }
+        productId: { $ref: '#/components/schemas/UUID' }
         price: { $ref: '#/components/schemas/Money', description: 'Provisional assumption: recurring base plan fee. Confirm whether this should instead be a pricing template.' }
         currency: { $ref: '#/components/schemas/Currency' }
         billingInterval: { $ref: '#/components/schemas/BillingInterval' }
         intervalCount: { type: integer, minimum: 1, default: 1 }
         minQuantity: { type: integer, minimum: 1 }
-        availableFrom: { type: string, format: date }
-        availableUntil: { type: string, format: date }
+        availableFrom: { type: [string, "null"], format: date }
+        availableUntil: { type: [string, "null"], format: date }
         autoCloseAtEnd: { type: boolean }
         allowEarlyClose: { type: boolean }
         allowPause: { type: boolean }
         allowRenewal: { type: boolean }
         isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
     PlanCreate:
       type: object
       required: [name, price, currency, billingInterval, minQuantity]
       properties:
         name: { type: string, minLength: 1, maxLength: 160 }
-        description: { type: string, maxLength: 2000 }
+        description: { type: [string, "null"], maxLength: 2000 }
+        productId: { $ref: '#/components/schemas/UUID' }
         price: { $ref: '#/components/schemas/Money' }
         currency: { $ref: '#/components/schemas/Currency' }
         billingInterval: { $ref: '#/components/schemas/BillingInterval' }
         intervalCount: { type: integer, minimum: 1, default: 1 }
         minQuantity: { type: integer, minimum: 1 }
-        availableFrom: { type: string, format: date }
-        availableUntil: { type: string, format: date }
+        availableFrom: { type: [string, "null"], format: date }
+        availableUntil: { type: [string, "null"], format: date }
         autoCloseAtEnd: { type: boolean, default: false }
         allowEarlyClose: { type: boolean, default: false }
         allowPause: { type: boolean, default: false }
@@ -1859,14 +1906,15 @@ components:
       type: object
       properties:
         name: { type: string, maxLength: 160 }
-        description: { type: string, maxLength: 2000 }
+        description: { type: [string, "null"], maxLength: 2000 }
+        productId: { $ref: '#/components/schemas/UUID' }
         price: { $ref: '#/components/schemas/Money' }
         currency: { $ref: '#/components/schemas/Currency' }
         billingInterval: { $ref: '#/components/schemas/BillingInterval' }
         intervalCount: { type: integer, minimum: 1 }
         minQuantity: { type: integer, minimum: 1 }
-        availableFrom: { type: string, format: date }
-        availableUntil: { type: string, format: date }
+        availableFrom: { type: [string, "null"], format: date }
+        availableUntil: { type: [string, "null"], format: date }
         autoCloseAtEnd: { type: boolean }
         allowEarlyClose: { type: boolean }
         allowPause: { type: boolean }

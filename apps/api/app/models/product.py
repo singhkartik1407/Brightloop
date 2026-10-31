@@ -30,6 +30,7 @@ class Product(UUIDTimestampMixin, Base):
     variants: Mapped[list["ProductVariant"]] = relationship(
         "ProductVariant", back_populates="product", cascade="save-update, merge"
     )
+    plans: Mapped[list["Plan"]] = relationship("Plan", back_populates="product")
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_products_name_nonempty"),
