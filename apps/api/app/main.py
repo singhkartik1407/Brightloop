@@ -17,6 +17,10 @@ from app.modules.discounts.router import router as discounts_router
 from app.modules.quotation_templates.router import router as quotation_templates_router
 from app.modules.quotations.router import router as quotations_router
 from app.modules.subscriptions.router import router as subscriptions_router
+from app.modules.invoices.router import router as invoices_router
+from app.modules.payments.router import router as payments_router
+from app.modules.notifications.router import router as notifications_router
+from app.modules.analytics.router import router as analytics_router
 
 
 app = FastAPI(
@@ -45,6 +49,10 @@ app.include_router(discounts_router)
 app.include_router(quotation_templates_router)
 app.include_router(quotations_router)
 app.include_router(subscriptions_router)
+app.include_router(invoices_router)
+app.include_router(payments_router)
+app.include_router(notifications_router)
+app.include_router(analytics_router)
 
 
 @app.get("/health", tags=["Health"])

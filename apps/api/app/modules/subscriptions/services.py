@@ -597,6 +597,15 @@ def renew_subscription(
     )
     db.add(renewal_record)
 
+    from app.modules.invoices.services import create_invoice_from_subscription
+    create_invoice_from_subscription(
+        db=db,
+        subscription=subscription,
+        period_start=new_period_start,
+        period_end=new_period_end,
+        billing_reason="SUBSCRIPTION_RENEWAL",
+    )
+
     record_subscription_event(
         db=db,
         subscription_id=subscription.id,
@@ -713,6 +722,10 @@ def change_subscription_plan(
             created_at=now_utc,
         )
         db.add(adjustment)
+        db.flush()
+
+        from app.modules.invoices.services import create_invoice_for_upgrade_adjustment
+        upgrade_inv = create_invoice_for_upgrade_adjustment(db, subscription, adjustment)
 
         record_subscription_event(
             db=db,
@@ -731,7 +744,7 @@ def change_subscription_plan(
             currency=subscription.currency,
             effective_at=now_utc,
             adjustment_type="IMMEDIATE_UPGRADE_DIFFERENCE",
-            invoice_id=None,
+            invoice_id=upgrade_inv.id,
             message=f"Upgraded to {new_plan.name}. Additional charge of {subscription.currency} {diff:.2f} recorded for billing.",
         )
 

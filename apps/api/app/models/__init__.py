@@ -16,6 +16,14 @@ from app.models.subscription import (
     SubscriptionStatus,
     PendingBillingAdjustment,
 )
+from app.models.invoice import Invoice, InvoiceLineItem, InvoiceCounter, InvoiceStatus
+from app.models.payment import Payment, PaymentCounter, PaymentMethod, PaymentStatus
+from app.models.notification import (
+    Notification,
+    NotificationChannel,
+    NotificationType,
+    NotificationStatus,
+)
 
 
 __all__ = [
@@ -47,4 +55,16 @@ __all__ = [
     "SubscriptionRenewalRecord",
     "SubscriptionStatus",
     "PendingBillingAdjustment",
+    "Invoice",
+    "InvoiceLineItem",
+    "InvoiceCounter",
+    "InvoiceStatus",
+    "Payment",
+    "PaymentCounter",
+    "PaymentMethod",
+    "PaymentStatus",
+    "Notification",
+    "NotificationChannel",
+    "NotificationType",
+    "NotificationStatus",
 ]

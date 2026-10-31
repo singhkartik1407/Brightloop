@@ -48,6 +48,7 @@ tags:
   - name: Subscriptions
   - name: Invoices
   - name: Payments
+  - name: Notifications
   - name: Analytics
 paths:
   /health:
@@ -1428,6 +1429,24 @@ paths:
                       items:
                         type: array
                         items: { $ref: '#/components/schemas/Invoice' }
+    post:
+      tags: [Invoices]
+      operationId: createInvoice
+      summary: Create a manual invoice
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceCreate' }
+      responses:
+        '201':
+          description: Invoice created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/invoices/{invoiceId}:
     parameters:
       - $ref: '#/components/parameters/InvoiceId'
@@ -1614,6 +1633,102 @@ paths:
       responses:
         '202': { description: Webhook accepted for processing. }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '501': { $ref: '#/components/schemas/ErrorResponse' }
+  /api/v1/payments/{paymentId}:
+    parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Payments]
+      operationId: getPayment
+      summary: Get payment detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Payment detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List notifications for current user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Paginated notifications.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Notification' }
+  /api/v1/notifications/unread-count:
+    get:
+      tags: [Notifications]
+      operationId: getUnreadNotificationCount
+      summary: Get unread notification count
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Unread notification count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unreadCount]
+                properties:
+                  unreadCount: { type: integer, minimum: 0 }
+  /api/v1/notifications/{notificationId}/read:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Notifications]
+      operationId: markNotificationAsRead
+      summary: Mark notification as read
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Notification marked as read.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsAsRead
+      summary: Mark all notifications as read
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: All notifications marked as read.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, count]
+                properties:
+                  message: { type: string }
+                  count: { type: integer, minimum: 0 }
 
   /api/v1/analytics/summary:
     get:
@@ -2584,3 +2699,55 @@ components:
         amountDue: { $ref: '#/components/schemas/Money' }
         currency: { $ref: '#/components/schemas/Currency' }
         daysOverdue: { type: integer, minimum: 1 }
+    InvoiceLineCreate:
+      type: object
+      required: [description, quantity, unitPrice]
+      properties:
+        productId: { $ref: '#/components/schemas/UUID' }
+        description: { type: string }
+        quantity: { type: integer, minimum: 1, default: 1 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        selectedVariants: { type: array, items: { type: string } }
+        taxRatePercent: { type: string, default: '0.00' }
+        taxCode: { type: string }
+        discountAmount: { $ref: '#/components/schemas/Money', default: '0.00' }
+    InvoiceCreate:
+      type: object
+      required: [customerId, lines]
+      properties:
+        customerId: { $ref: '#/components/schemas/UUID' }
+        subscriptionId: { $ref: '#/components/schemas/UUID' }
+        quotationId: { $ref: '#/components/schemas/UUID' }
+        issueDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        currency: { $ref: '#/components/schemas/Currency', default: INR }
+        paymentTerms: { type: string }
+        notes: { type: string }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceLineCreate' }
+    NotificationChannel:
+      type: string
+      enum: [IN_APP, EMAIL]
+    NotificationType:
+      type: string
+      enum: [INVOICE_ISSUED, INVOICE_OVERDUE, PAYMENT_RECEIVED, PAYMENT_FAILED, SUBSCRIPTION_ACTIVATED, SUBSCRIPTION_RENEWED, PLAN_UPGRADED, QUOTATION_CONFIRMED, GENERAL]
+    NotificationStatus:
+      type: string
+      enum: [PENDING, SENT, FAILED, READ]
+    Notification:
+      type: object
+      required: [id, channel, notificationType, title, message, status, isRead, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        customerId: { $ref: '#/components/schemas/UUID' }
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+        notificationType: { $ref: '#/components/schemas/NotificationType' }
+        title: { type: string }
+        message: { type: string }
+        relatedEntityType: { type: string }
+        relatedEntityId: { $ref: '#/components/schemas/UUID' }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        isRead: { type: boolean }
+        readAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
