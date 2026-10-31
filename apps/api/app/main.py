@@ -12,6 +12,8 @@ from app.modules.users.router import router as users_router
 from app.modules.customers.router import router as customers_router
 from app.modules.products.router import router as products_router
 from app.modules.plans.router import router as plans_router
+from app.modules.taxes.router import router as taxes_router
+from app.modules.discounts.router import router as discounts_router
 
 
 app = FastAPI(
@@ -35,6 +37,8 @@ app.include_router(users_router)
 app.include_router(customers_router)
 app.include_router(products_router)
 app.include_router(plans_router)
+app.include_router(taxes_router)
+app.include_router(discounts_router)
 
 
 @app.get("/health", tags=["Health"])

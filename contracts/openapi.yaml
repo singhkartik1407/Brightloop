@@ -665,6 +665,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - name: isActive
+          in: query
+          schema: { type: boolean }
+        - name: taxType
+          in: query
+          schema: { $ref: '#/components/schemas/TaxType' }
+        - name: jurisdiction
+          in: query
+          schema: { type: string }
       responses:
         '200':
           description: Paginated tax rules.
@@ -678,6 +688,9 @@ paths:
                       items:
                         type: array
                         items: { $ref: '#/components/schemas/TaxRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       tags: [Taxes]
       operationId: createTaxRule
@@ -694,9 +707,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaxRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/tax-rules/{taxRuleId}:
     parameters:
       - $ref: '#/components/parameters/TaxRuleId'
+    get:
+      tags: [Taxes]
+      operationId: getTaxRule
+      summary: Get tax rule detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Tax rule detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     patch:
       tags: [Taxes]
       operationId: updateTaxRule
@@ -713,7 +745,45 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaxRule' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/tax-rules/{taxRuleId}/archive:
+    post:
+      tags: [Taxes]
+      operationId: archiveTaxRule
+      summary: Archive tax rule
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TaxRuleId'
+      responses:
+        '204': { description: Tax rule archived. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/tax-rules/{taxRuleId}/restore:
+    post:
+      tags: [Taxes]
+      operationId: restoreTaxRule
+      summary: Restore tax rule
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TaxRuleId'
+      responses:
+        '200':
+          description: Tax rule restored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /api/v1/discount-rules:
     get:
@@ -724,6 +794,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - name: isActive
+          in: query
+          schema: { type: boolean }
+        - name: discountType
+          in: query
+          schema: { $ref: '#/components/schemas/DiscountType' }
+        - name: scope
+          in: query
+          schema: { $ref: '#/components/schemas/DiscountScope' }
       responses:
         '200':
           description: Paginated discount rules.
@@ -737,6 +817,9 @@ paths:
                       items:
                         type: array
                         items: { $ref: '#/components/schemas/DiscountRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     post:
       tags: [Discounts]
       operationId: createDiscountRule
@@ -753,10 +836,29 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DiscountRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Product referenced in productIds not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/discount-rules/{discountRuleId}:
     parameters:
       - $ref: '#/components/parameters/DiscountRuleId'
+    get:
+      tags: [Discounts]
+      operationId: getDiscountRule
+      summary: Get discount rule detail
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Discount rule detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
     patch:
       tags: [Discounts]
       operationId: updateDiscountRule
@@ -773,8 +875,45 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DiscountRule' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/discount-rules/{discountRuleId}/archive:
+    post:
+      tags: [Discounts]
+      operationId: archiveDiscountRule
+      summary: Archive discount rule (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DiscountRuleId'
+      responses:
+        '204': { description: Discount rule archived. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/discount-rules/{discountRuleId}/restore:
+    post:
+      tags: [Discounts]
+      operationId: restoreDiscountRule
+      summary: Restore discount rule (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DiscountRuleId'
+      responses:
+        '200':
+          description: Discount rule restored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /api/v1/quote-templates:
     get:
@@ -1925,15 +2064,17 @@ components:
       enum: [GENERIC, CGST, SGST, IGST, OTHER]
     TaxRule:
       type: object
-      required: [id, name, code, taxType, ratePercent, isActive]
+      required: [id, name, code, taxType, ratePercent, isActive, createdAt]
       properties:
         id: { $ref: '#/components/schemas/UUID' }
         name: { type: string }
         code: { type: string }
         taxType: { $ref: '#/components/schemas/TaxType' }
         ratePercent: { type: string, pattern: '^\d{1,3}(\.\d{1,4})?$' }
-        jurisdiction: { type: string, description: Configurable jurisdiction/state applicability. }
+        jurisdiction: { type: [string, "null"], description: Configurable jurisdiction/state applicability. }
+        isInclusive: { type: boolean, default: false }
         isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
     TaxRuleCreate:
       type: object
       required: [name, code, taxType, ratePercent]
@@ -1942,7 +2083,8 @@ components:
         code: { type: string, maxLength: 40 }
         taxType: { $ref: '#/components/schemas/TaxType' }
         ratePercent: { type: string, pattern: '^\d{1,3}(\.\d{1,4})?$' }
-        jurisdiction: { type: string, maxLength: 120 }
+        jurisdiction: { type: [string, "null"], maxLength: 120 }
+        isInclusive: { type: boolean, default: false }
         isActive: { type: boolean, default: true }
     TaxRuleUpdate:
       type: object
@@ -1951,7 +2093,8 @@ components:
         code: { type: string, maxLength: 40 }
         taxType: { $ref: '#/components/schemas/TaxType' }
         ratePercent: { type: string, pattern: '^\d{1,3}(\.\d{1,4})?$' }
-        jurisdiction: { type: string, maxLength: 120 }
+        jurisdiction: { type: [string, "null"], maxLength: 120 }
+        isInclusive: { type: boolean }
         isActive: { type: boolean }
     DiscountType:
       type: string
@@ -1961,26 +2104,29 @@ components:
       enum: [PRODUCT, SUBSCRIPTION]
     DiscountRule:
       type: object
-      required: [id, name, discountType, value, scope, startsAt, endsAt, usedCount, isActive]
+      required: [id, name, discountType, value, scope, startsAt, endsAt, usedCount, isActive, createdAt]
       properties:
         id: { $ref: '#/components/schemas/UUID' }
         name: { type: string }
+        code: { type: [string, "null"] }
         discountType: { $ref: '#/components/schemas/DiscountType' }
         value: { $ref: '#/components/schemas/Money', description: Fixed discount amount or percentage numeric value represented as decimal string. }
         scope: { $ref: '#/components/schemas/DiscountScope' }
         productIds: { type: array, items: { $ref: '#/components/schemas/UUID' } }
-        minimumPurchase: { $ref: '#/components/schemas/Money' }
-        minimumQuantity: { type: integer, minimum: 1 }
+        minimumPurchase: { type: [string, "null"], description: Decimal string or null. }
+        minimumQuantity: { type: [integer, "null"], minimum: 1 }
         startsAt: { type: string, format: date-time }
         endsAt: { type: string, format: date-time }
-        maxUses: { type: integer, minimum: 1 }
+        maxUses: { type: [integer, "null"], minimum: 1 }
         usedCount: { type: integer, minimum: 0 }
         isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
     DiscountRuleCreate:
       type: object
       required: [name, discountType, value, scope, startsAt, endsAt]
       properties:
         name: { type: string, maxLength: 160 }
+        code: { type: [string, "null"], maxLength: 50 }
         discountType: { $ref: '#/components/schemas/DiscountType' }
         value: { type: string, pattern: '^\d{1,14}(\.\d{1,4})?$' }
         scope: { $ref: '#/components/schemas/DiscountScope' }
@@ -1995,7 +2141,11 @@ components:
       type: object
       properties:
         name: { type: string, maxLength: 160 }
+        code: { type: [string, "null"], maxLength: 50 }
+        discountType: { $ref: '#/components/schemas/DiscountType' }
         value: { type: string, pattern: '^\d{1,14}(\.\d{1,4})?$' }
+        scope: { $ref: '#/components/schemas/DiscountScope' }
+        productIds: { type: array, items: { $ref: '#/components/schemas/UUID' } }
         minimumPurchase: { $ref: '#/components/schemas/Money' }
         minimumQuantity: { type: integer, minimum: 1 }
         startsAt: { type: string, format: date-time }
