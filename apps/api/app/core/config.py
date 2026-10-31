@@ -18,5 +18,9 @@ class Settings(BaseSettings):
 
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 
+    # Business and GST Configuration (explicitly configurable, no assumed defaults)
+    ORGANIZATION_STATE: str | None = None
+    DEFAULT_CURRENCY: str = "INR"
+
 
 settings = Settings()

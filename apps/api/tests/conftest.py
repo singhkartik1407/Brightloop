@@ -24,6 +24,12 @@ from app.models import (
     DiscountTarget,
     DiscountType,
     DiscountScope,
+    QuoteTemplate,
+    QuoteTemplateLine,
+    Quotation,
+    QuotationCounter,
+    QuotationLine,
+    QuotationStatus,
 )
 
 
@@ -202,6 +208,7 @@ def role_users(db_session, test_user):
         user_id=customer_user.id,
         display_name="My Customer Profile",
         billing_email="customer.billing@example.com",
+        billing_state="Maharashtra",
         is_active=True
     )
 
@@ -209,6 +216,7 @@ def role_users(db_session, test_user):
         user_id=other_customer_user.id,
         display_name="Other Customer Profile",
         billing_email="other.billing@example.com",
+        billing_state="Maharashtra",
         is_active=True
     )
 

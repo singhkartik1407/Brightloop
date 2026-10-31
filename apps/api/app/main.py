@@ -14,6 +14,8 @@ from app.modules.products.router import router as products_router
 from app.modules.plans.router import router as plans_router
 from app.modules.taxes.router import router as taxes_router
 from app.modules.discounts.router import router as discounts_router
+from app.modules.quotation_templates.router import router as quotation_templates_router
+from app.modules.quotations.router import router as quotations_router
 
 
 app = FastAPI(
@@ -39,6 +41,8 @@ app.include_router(products_router)
 app.include_router(plans_router)
 app.include_router(taxes_router)
 app.include_router(discounts_router)
+app.include_router(quotation_templates_router)
+app.include_router(quotations_router)
 
 
 @app.get("/health", tags=["Health"])

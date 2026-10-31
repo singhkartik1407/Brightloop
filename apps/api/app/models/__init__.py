@@ -5,6 +5,8 @@ from app.models.product import Product, ProductType, ProductVariant
 from app.models.plan import Plan, BillingInterval
 from app.models.tax import TaxRule, TaxType
 from app.models.discount import DiscountRule, DiscountTarget, DiscountType, DiscountScope
+from app.models.quote_template import QuoteTemplate, QuoteTemplateLine
+from app.models.quotation import Quotation, QuotationCounter, QuotationLine, QuotationStatus
 
 
 __all__ = [
@@ -23,4 +25,10 @@ __all__ = [
     "DiscountTarget",
     "DiscountType",
     "DiscountScope",
+    "QuoteTemplate",
+    "QuoteTemplateLine",
+    "Quotation",
+    "QuotationCounter",
+    "QuotationLine",
+    "QuotationStatus",
 ]

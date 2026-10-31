@@ -984,6 +984,38 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/QuoteTemplate' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/quote-templates/{templateId}/archive:
+    post:
+      tags: [Quote Templates]
+      operationId: archiveQuoteTemplate
+      summary: Archive quotation template (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '204': { description: Template archived. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/quote-templates/{templateId}/restore:
+    post:
+      tags: [Quote Templates]
+      operationId: restoreQuoteTemplate
+      summary: Restore quotation template (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          description: Template restored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuoteTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/v1/quotations:
     get:
@@ -1000,6 +1032,7 @@ paths:
         - name: customerId
           in: query
           schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Search'
       responses:
         '200':
           description: Paginated quotations.
@@ -1029,6 +1062,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Quotation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/quotations/{quotationId}:
     parameters:
@@ -1044,7 +1081,31 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Quotation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Quotations]
+      operationId: updateQuotation
+      summary: Update draft quotation
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuotationUpdate' }
+      responses:
+        '200':
+          description: Updated quotation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quotation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Only draft quotations can be modified. }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/quotations/{quotationId}/send:
     post:
       tags: [Quotations]
@@ -2198,7 +2259,7 @@ components:
         taxRuleIds: { type: array, items: { $ref: '#/components/schemas/UUID' } }
     QuotationCreate:
       type: object
-      required: [customerId, planId, startDate, lines]
+      required: [customerId, startDate]
       properties:
         customerId: { $ref: '#/components/schemas/UUID' }
         templateId: { $ref: '#/components/schemas/UUID' }
@@ -2210,6 +2271,19 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+        discountCode: { type: string, maxLength: 50 }
+    QuotationUpdate:
+      type: object
+      properties:
+        planId: { $ref: '#/components/schemas/UUID' }
+        startDate: { type: string, format: date }
+        paymentTerms: { type: string, maxLength: 500 }
+        validityDays: { type: integer, minimum: 1 }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+        discountCode: { type: string, maxLength: 50 }
     Quotation:
       type: object
       required: [id, number, customerId, planId, status, startDate, expiresAt, lines, subtotal, taxTotal, discountTotal, total, currency, createdAt]
