@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -141,7 +141,6 @@ export default function App() {
     customerId: "",
     planId: "",
     productId: "",
-    taxRuleId: "",
     quantity: 1,
     unitPrice: "499.00",
     discountCode: "",
@@ -318,37 +317,17 @@ export default function App() {
     setModalError(null);
     setModalSubmitting(true);
     try {
-      const customerId = newQuote.customerId || (customers.length > 0 ? customers[0].id : "");
-      const planId = newQuote.planId || (plans.length > 0 ? plans[0].id : "");
-      const productId = newQuote.productId || (products.length > 0 ? products[0].id : "");
-      const selectedCustomer = customers.find((c) => c.id === customerId);
-
-      let taxRuleIds: string[] | undefined = undefined;
-      if (newQuote.taxRuleId && newQuote.taxRuleId !== "auto") {
-        taxRuleIds = [newQuote.taxRuleId];
-      } else if (!newQuote.taxRuleId && selectedCustomer?.billingState) {
-        const matched = taxRules.find(
-          (t) => t.jurisdiction?.toLowerCase() === selectedCustomer.billingState?.toLowerCase()
-        );
-        if (matched) {
-          taxRuleIds = [matched.id];
-        }
-      } else if (!newQuote.taxRuleId && taxRules.length > 0) {
-        taxRuleIds = [taxRules[0].id];
-      }
-
       const created = await createQuotation({
-        customerId,
-        planId,
+        customerId: newQuote.customerId,
+        planId: newQuote.planId,
         currency: APP_CONFIG.DEFAULT_CURRENCY,
         lines: [
           {
-            productId,
+            productId: newQuote.productId,
             quantity: newQuote.quantity,
             unitPrice: newQuote.unitPrice,
           },
         ],
-        taxRuleIds,
         discountCode: newQuote.discountCode || undefined,
       });
       setQuotations((prev) => [created, ...prev]);
@@ -375,22 +354,27 @@ export default function App() {
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
-    const customerId = newSub.customerId || (customers.length > 0 ? customers[0].id : "");
-    const planId = newSub.planId || (plans.length > 0 ? plans[0].id : "");
-    if (!customerId || !planId) {
+    if (!newSub.customerId || !newSub.planId) {
       setModalError("Select both customer and plan.");
       return;
     }
+    const matchedPlan = plans.find((p) => p.id === newSub.planId);
     setModalSubmitting(true);
     try {
       const created = await createSubscription({
-        ...newSub,
-        customerId,
-        planId,
+        customerId: newSub.customerId,
+        planId: newSub.planId,
+        lines: [
+          {
+            planId: newSub.planId,
+            quantity: 1,
+            unitPrice: matchedPlan ? matchedPlan.price : "499.00",
+          },
+        ],
       });
       setSubscriptions((prev) => [created, ...prev]);
       setIsSubModalOpen(false);
-      setSuccessNotice("Subscription provisioned.");
+      setSuccessNotice("Subscription provisioned successfully.");
     } catch (err: unknown) {
       setModalError(err instanceof Error ? err.message : "Failed to provision subscription.");
     } finally {
@@ -957,7 +941,7 @@ export default function App() {
                               <td className="py-3.5 px-4 text-white font-bold">{q.currency} {q.totalAmount}</td>
                               <td className="py-3.5 px-4">{getStatusBadge(q.status)}</td>
                               <td className="py-3.5 px-4 text-right font-sans">
-                                {q.status !== "ACCEPTED" && q.status !== "CONFIRMED" && (
+                                {q.status !== "ACCEPTED" && (
                                   <Button
                                     size="sm"
                                     onClick={() => handleAcceptQuotation(q.id)}
@@ -966,7 +950,7 @@ export default function App() {
                                     Accept & Provision
                                   </Button>
                                 )}
-                                {(q.status === "ACCEPTED" || q.status === "CONFIRMED") && (
+                                {q.status === "ACCEPTED" && (
                                   <span className="text-[11px] text-zinc-500 font-mono">
                                     Sub: {q.subscriptionId?.slice(0, 8) || "Linked"}
                                   </span>
@@ -1530,17 +1514,6 @@ export default function App() {
                 <Label className="text-xs text-zinc-300">Product Line *</Label>
                 <select value={newQuote.productId} onChange={(e) => setNewQuote({ ...newQuote, productId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
                   {products.map((pr) => <option key={pr.id} value={pr.id}>{pr.name} ({pr.sku})</option>)}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-300">Tax Rule</Label>
-                <select value={newQuote.taxRuleId} onChange={(e) => setNewQuote({ ...newQuote, taxRuleId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
-                  <option value="">Default Applicable Rule / Automatic GST</option>
-                  {taxRules.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.code} — {t.ratePercentage}% {t.taxType})
-                    </option>
-                  ))}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
