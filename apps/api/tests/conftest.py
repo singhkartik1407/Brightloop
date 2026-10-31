@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.models import Base, User, UserRole, Customer
+from app.models import Base, User, UserRole, Customer, Product, ProductVariant
 
 
 # --------------------------------

@@ -433,6 +433,7 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/Product' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Products]
       operationId: createProduct
@@ -460,7 +461,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Product' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403':
+          description: Only Admin may create products. Staff cannot create products because costPrice is required and Admin-only.
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/products/{productId}:
     parameters:
@@ -477,6 +480,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Product' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
     patch:
       tags: [Products]
       operationId: updateProduct
@@ -494,6 +499,18 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Product' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '400':
+          description: No fields were provided for update.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detail]
+                properties:
+                  detail: { type: string }
+        '409': { description: Archived product cannot be updated. }
         '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/products/{productId}/archive:
     post:
@@ -506,6 +523,8 @@ paths:
       responses:
         '204': { description: Product archived. }
         '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/plans:
     get:
@@ -1746,22 +1765,23 @@ components:
         isActive: { type: boolean }
     ProductVariantInput:
       type: object
+      additionalProperties: false
       required: [attributeName, attributeValue, priceAdjustment]
       properties:
         attributeName: { type: string, minLength: 1, maxLength: 80 }
         attributeValue: { type: string, minLength: 1, maxLength: 120 }
-        priceAdjustment: { $ref: '#/components/schemas/Money' }
+        priceAdjustment: { $ref: '#/components/schemas/Money', minimum: 0 }
     Product:
       type: object
-      required: [id, name, type, salesPrice, costPrice, currency, variants, isActive, createdAt]
+      required: [id, name, type, salesPrice, currency, variants, isActive, createdAt]
       properties:
         id: { $ref: '#/components/schemas/UUID' }
         name: { type: string }
         type: { $ref: '#/components/schemas/ProductType' }
         salesPrice: { $ref: '#/components/schemas/Money' }
-        costPrice: { $ref: '#/components/schemas/Money', description: Admin-only field; never expose to staff/customer unless explicitly authorized. }
+        costPrice: { $ref: '#/components/schemas/Money', description: Returned only to Admin; omitted for Staff. }
         currency: { $ref: '#/components/schemas/Currency' }
-        notes: { type: string }
+        notes: { type: [string, "null"] }
         variants:
           type: array
           items: { $ref: '#/components/schemas/ProductVariant' }
@@ -1769,12 +1789,13 @@ components:
         createdAt: { type: string, format: date-time }
     ProductCreate:
       type: object
+      additionalProperties: false
       required: [name, type, salesPrice, costPrice, currency]
       properties:
         name: { type: string, minLength: 1, maxLength: 160 }
         type: { $ref: '#/components/schemas/ProductType' }
-        salesPrice: { $ref: '#/components/schemas/Money' }
-        costPrice: { $ref: '#/components/schemas/Money' }
+        salesPrice: { $ref: '#/components/schemas/Money', minimum: 0 }
+        costPrice: { $ref: '#/components/schemas/Money', minimum: 0 }
         currency: { $ref: '#/components/schemas/Currency' }
         notes: { type: string, maxLength: 2000 }
         variants:
@@ -1782,15 +1803,17 @@ components:
           items: { $ref: '#/components/schemas/ProductVariantInput' }
     ProductUpdate:
       type: object
+      additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 160 }
         type: { $ref: '#/components/schemas/ProductType' }
-        salesPrice: { $ref: '#/components/schemas/Money' }
-        costPrice: { $ref: '#/components/schemas/Money' }
+        salesPrice: { $ref: '#/components/schemas/Money', minimum: 0 }
+        costPrice: { $ref: '#/components/schemas/Money', minimum: 0 }
         currency: { $ref: '#/components/schemas/Currency' }
         notes: { type: string, maxLength: 2000 }
         variants:
           type: array
+          description: Full active variant set. Omit to leave variants unchanged; send an empty array to archive all variants; sending a matching archived option reactivates it.
           items: { $ref: '#/components/schemas/ProductVariantInput' }
         isActive: { type: boolean }
     BillingInterval:
