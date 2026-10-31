@@ -20,6 +20,7 @@ import {
   Mail,
   Building,
   Loader2,
+  Lock,
 } from "lucide-react"
 
 import type {
@@ -40,9 +41,15 @@ import {
 } from "@/services/domain.service"
 
 export default function App() {
-  const { user, logout } = useAuth()
+  const { user, login, logout } = useAuth()
   const [activeTab, setActiveTab] = useState<"subscriptions" | "plans" | "customers" | "invoices">("subscriptions")
   const [loading, setLoading] = useState(true)
+
+  // Login form state
+  const [email, setEmail] = useState("demo@brightloop.com")
+  const [password, setPassword] = useState("password123")
+  const [loginError, setLoginError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Data State
   const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([])
@@ -61,8 +68,9 @@ export default function App() {
   const [newSub, setNewSub] = useState({ customerId: "", planId: "" })
   const [newPlan, setNewPlan] = useState({ name: "", price: "", interval: "MONTHLY" as "MONTHLY" | "YEARLY" })
 
-  // Initial Data Load
+  // Initial Data Load when user is authenticated
   useEffect(() => {
+    if (!user) return
     async function loadData() {
       setLoading(true)
       try {
@@ -85,7 +93,20 @@ export default function App() {
       }
     }
     loadData()
-  }, [])
+  }, [user])
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginError("")
+    setIsSubmitting(true)
+    try {
+      await login({ email, password })
+    } catch (err: any) {
+      setLoginError(err.message || "Failed to log in. Please check your credentials.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -132,6 +153,80 @@ export default function App() {
       (c.companyName && c.companyName.toLowerCase().includes(customerSearch.toLowerCase())) ||
       c.billingEmail.toLowerCase().includes(customerSearch.toLowerCase())
   )
+
+  // Not authenticated view (Login screen)
+  if (!user) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-zinc-950 px-4 text-zinc-100">
+        <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 p-8 shadow-2xl space-y-6">
+          <div className="flex flex-col items-center text-center space-y-2">
+            <div className="h-12 w-12 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-xl shadow-lg shadow-blue-500/30">
+              B
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-white">Sign in to BrightLoop</h1>
+            <p className="text-xs text-zinc-400">Subscription & Billing Engine Portal</p>
+          </div>
+
+          {loginError && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-zinc-300">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                <Input
+                  required
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@brightloop.com"
+                  className="pl-9 bg-zinc-950 border-zinc-800 text-sm text-white"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-zinc-300">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                <Input
+                  required
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="pl-9 bg-zinc-950 border-zinc-800 text-sm text-white"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 text-sm transition-all shadow-md shadow-blue-600/20"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" /> Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+          </form>
+
+          <p className="text-center text-xs text-zinc-500 font-mono">
+            Mock Auth active &bull; instant login enabled
+          </p>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen w-full bg-zinc-950 text-zinc-100">
@@ -184,14 +279,20 @@ export default function App() {
           </nav>
         </div>
 
-        {/* User Card */}
+        {/* User Card with Functional Logout */}
         <div className="border-t border-zinc-800 pt-4">
           <div className="flex items-center justify-between">
             <div className="overflow-hidden">
               <p className="text-sm font-semibold truncate">{user?.email || "Admin User"}</p>
               <span className="text-xs text-zinc-500 uppercase tracking-wider font-mono">{user?.role || "ADMIN"}</span>
             </div>
-            <Button variant="ghost" size="icon" onClick={logout} className="text-zinc-400 hover:text-red-400">
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Log out"
+              onClick={() => logout()}
+              className="text-zinc-400 hover:text-red-400 hover:bg-zinc-800"
+            >
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
