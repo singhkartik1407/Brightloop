@@ -153,7 +153,7 @@ export async function createPlan(payload: CreatePlanPayload): Promise<PlanItem> 
 }
 
 // ==========================================
-// TAX RULES & DISCOUNTS
+// TAX RULES & DISCOUNT RULES (ALIGNED)
 // ==========================================
 export async function fetchTaxRules(): Promise<TaxRuleRecord[]> {
   if (USE_MOCK) {
@@ -189,7 +189,8 @@ export async function fetchDiscounts(): Promise<DiscountRecord[]> {
     ];
   }
 
-  const data = await apiRequest<PaginatedResponse<DiscountRecord> | DiscountRecord[]>("/discounts?page=1&pageSize=50");
+  // Aligned: backend FastAPI endpoint is /discount-rules
+  const data = await apiRequest<PaginatedResponse<DiscountRecord> | DiscountRecord[]>("/discount-rules?page=1&pageSize=50");
   return Array.isArray(data) ? data : data.items || [];
 }
 
@@ -202,7 +203,8 @@ export async function createDiscount(payload: CreateDiscountPayload): Promise<Di
     maxUsage: payload.maxUsage || null,
   };
 
-  return apiRequest<DiscountRecord>("/discounts", {
+  // Aligned: backend FastAPI endpoint is /discount-rules
+  return apiRequest<DiscountRecord>("/discount-rules", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -277,7 +279,6 @@ export async function createSubscription(payload: CreateSubscriptionPayload): Pr
     };
   }
 
-  // Schema: customerId, planId, optional startDate, and lines containing ONLY productId and quantity
   const body = {
     customerId: payload.customerId,
     planId: payload.planId,
@@ -397,7 +398,7 @@ export async function markAllNotificationsRead(): Promise<void> {
 }
 
 // ==========================================
-// ANALYTICS
+// ANALYTICS (ALIGNED)
 // ==========================================
 export async function fetchAnalyticsDashboard(currency = "INR"): Promise<AnalyticsDashboard> {
   if (USE_MOCK) {
@@ -414,5 +415,6 @@ export async function fetchAnalyticsDashboard(currency = "INR"): Promise<Analyti
     };
   }
 
-  return apiRequest<AnalyticsDashboard>(`/analytics/dashboard?currency=${encodeURIComponent(currency)}`);
+  // Aligned: backend FastAPI endpoint is /analytics/summary
+  return apiRequest<AnalyticsDashboard>(`/analytics/summary?currency=${encodeURIComponent(currency)}`);
 }

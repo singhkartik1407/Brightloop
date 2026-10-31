@@ -495,12 +495,15 @@ export default function App() {
     }
   };
 
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.displayName.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      (c.companyName && c.companyName.toLowerCase().includes(customerSearch.toLowerCase())) ||
-      c.billingEmail.toLowerCase().includes(customerSearch.toLowerCase())
-  );
+  // Safe null-handling customer filter (prevents toLowerCase crash on null/undefined fields)
+  const term = (customerSearch || "").trim().toLowerCase();
+  const filteredCustomers = customers.filter((c) => {
+    if (!term) return true;
+    const nameMatch = c.displayName ? c.displayName.toLowerCase().includes(term) : false;
+    const compMatch = c.companyName ? c.companyName.toLowerCase().includes(term) : false;
+    const emailMatch = c.billingEmail ? c.billingEmail.toLowerCase().includes(term) : false;
+    return nameMatch || compMatch || emailMatch;
+  });
 
   if (authLoading) {
     return (
@@ -1169,12 +1172,12 @@ export default function App() {
                       <tbody className="divide-y divide-zinc-800/60 text-xs">
                         {filteredCustomers.map((cust) => (
                           <tr key={cust.id} className="hover:bg-zinc-800/30 transition-colors">
-                            <td className="py-3.5 px-4 font-medium text-white">{cust.displayName}</td>
+                            <td className="py-3.5 px-4 font-medium text-white">{cust.displayName || "Unnamed"}</td>
                             <td className="py-3.5 px-4 text-zinc-300 flex items-center gap-1.5">
                               <Building className="w-3.5 h-3.5 text-zinc-500" /> {cust.companyName || "Direct"}
                             </td>
                             <td className="py-3.5 px-4 text-zinc-300 font-mono">
-                              <span className="flex items-center gap-1.5"><Mail className="w-3 h-3 text-zinc-500" /> {cust.billingEmail}</span>
+                              <span className="flex items-center gap-1.5"><Mail className="w-3 h-3 text-zinc-500" /> {cust.billingEmail || "—"}</span>
                             </td>
                             <td className="py-3.5 px-4">{getStatusBadge(cust.status || "ACTIVE")}</td>
                             <td className="py-3.5 px-4 text-zinc-500 font-mono text-[11px]">{cust.id}</td>
