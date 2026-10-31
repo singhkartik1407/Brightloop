@@ -1,4 +1,5 @@
-import { setAccessToken } from "./api"
+﻿import { apiRequest, setAccessToken } from "./api"
+import { USE_MOCK } from "./mock.config"
 import type {
   LoginRequest,
   LoginResponse,
@@ -6,9 +7,6 @@ import type {
   RegisterResponse,
   User,
 } from "@/types/auth.types"
-
-// Toggle this to false when connecting to Developer A's real backend later
-const USE_MOCK = true
 
 const MOCK_USER: User = {
   id: "usr_mock_12345",
@@ -31,8 +29,6 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
     return mockRes
   }
 
-  // Real backend call fallback
-  const { apiRequest } = await import("./api")
   const response = await apiRequest<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(data),
@@ -57,7 +53,6 @@ export async function register(data: RegisterRequest): Promise<RegisterResponse>
     return mockRes
   }
 
-  const { apiRequest } = await import("./api")
   return apiRequest<RegisterResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(data),
@@ -68,7 +63,6 @@ export async function getCurrentUser(): Promise<User> {
   if (USE_MOCK) {
     return MOCK_USER
   }
-  const { apiRequest } = await import("./api")
   return apiRequest<User>("/auth/me")
 }
 
