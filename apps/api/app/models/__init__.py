@@ -7,6 +7,15 @@ from app.models.tax import TaxRule, TaxType
 from app.models.discount import DiscountRule, DiscountTarget, DiscountType, DiscountScope
 from app.models.quote_template import QuoteTemplate, QuoteTemplateLine
 from app.models.quotation import Quotation, QuotationCounter, QuotationLine, QuotationStatus
+from app.models.subscription import (
+    Subscription,
+    SubscriptionCounter,
+    SubscriptionEvent,
+    SubscriptionLine,
+    SubscriptionRenewalRecord,
+    SubscriptionStatus,
+    PendingBillingAdjustment,
+)
 
 
 __all__ = [
@@ -31,4 +40,11 @@ __all__ = [
     "QuotationCounter",
     "QuotationLine",
     "QuotationStatus",
+    "Subscription",
+    "SubscriptionCounter",
+    "SubscriptionEvent",
+    "SubscriptionLine",
+    "SubscriptionRenewalRecord",
+    "SubscriptionStatus",
+    "PendingBillingAdjustment",
 ]

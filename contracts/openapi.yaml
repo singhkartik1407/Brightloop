@@ -1199,6 +1199,25 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Subscription' }
+  /api/v1/subscriptions/from-quotation/{quotationId}:
+    parameters:
+      - name: quotationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Subscriptions]
+      operationId: createSubscriptionFromQuotation
+      summary: Convert a confirmed quotation into a subscription
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Subscription created from quotation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/subscriptions/{subscriptionId}:
     parameters:
       - $ref: '#/components/parameters/SubscriptionId'
@@ -1214,6 +1233,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Subscription' }
         '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Subscriptions]
+      operationId: updateSubscription
+      summary: Update subscription metadata (payment terms, cancelAtPeriodEnd)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscriptionUpdate' }
+      responses:
+        '200':
+          description: Updated subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/subscriptions/{subscriptionId}/activate:
     post:
       tags: [Subscriptions]
@@ -1266,12 +1303,18 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
+        - name: expectedRenewalDate
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Expected renewal date for idempotency check; prevents duplicate cycle advancement.
       responses:
         '200':
           description: Renewed subscription.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Subscription' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/subscriptions/{subscriptionId}/cancel:
     post:
       tags: [Subscriptions]
@@ -1321,6 +1364,38 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PlanChangeResult' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/subscriptions/{subscriptionId}/close:
+    post:
+      tags: [Subscriptions]
+      operationId: closeSubscription
+      summary: Close subscription early if plan policy permits
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Closed subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/subscriptions/{subscriptionId}/history:
+    get:
+      tags: [Subscriptions]
+      operationId: getSubscriptionHistory
+      summary: Retrieve subscription audit event history
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Subscription audit events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SubscriptionEvent' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/v1/invoices:
     get:
@@ -2322,11 +2397,13 @@ components:
         planId: { $ref: '#/components/schemas/UUID' }
         planName: { type: string }
         quotationId: { $ref: '#/components/schemas/UUID' }
+        pendingPlanId: { $ref: '#/components/schemas/UUID' }
         status: { $ref: '#/components/schemas/SubscriptionStatus' }
         startDate: { type: string, format: date }
         expiryDate: { type: string, format: date }
         nextBillingDate: { type: string, format: date }
         billingInterval: { $ref: '#/components/schemas/BillingInterval' }
+        paymentTerms: { type: string }
         lines:
           type: array
           items: { $ref: '#/components/schemas/InvoiceLine' }
@@ -2349,6 +2426,23 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/SubscriptionLineInput' }
+    SubscriptionUpdate:
+      type: object
+      properties:
+        paymentTerms: { type: string, maxLength: 500 }
+        cancelAtPeriodEnd: { type: boolean }
+    SubscriptionEvent:
+      type: object
+      required: [id, subscriptionId, eventType, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        subscriptionId: { $ref: '#/components/schemas/UUID' }
+        eventType: { type: string }
+        actorId: { $ref: '#/components/schemas/UUID' }
+        actorRole: { type: string }
+        description: { type: string }
+        eventData: { type: object, nullable: true }
+        createdAt: { type: string, format: date-time }
     PlanChangeResult:
       type: object
       required: [subscription, adjustmentAmount, currency, effectiveAt, adjustmentType]

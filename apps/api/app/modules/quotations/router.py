@@ -550,7 +550,12 @@ def accept_quotation(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db),
 ):
-    quotation = db.get(Quotation, quotation_id)
+    quotation = (
+        db.query(Quotation)
+        .filter(Quotation.id == quotation_id)
+        .with_for_update()
+        .first()
+    )
     if not quotation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -603,6 +608,10 @@ def accept_quotation(
                     },
                 )
             discount_rule.used_count += 1
+
+    # Automatically convert confirmed quotation into a subscription
+    from app.modules.subscriptions.services import convert_quotation_to_subscription
+    convert_quotation_to_subscription(db, quotation, actor=current_user)
 
     db.commit()
     db.refresh(quotation)

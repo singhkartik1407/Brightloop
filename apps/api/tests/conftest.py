@@ -30,6 +30,13 @@ from app.models import (
     QuotationCounter,
     QuotationLine,
     QuotationStatus,
+    Subscription,
+    SubscriptionCounter,
+    SubscriptionEvent,
+    SubscriptionLine,
+    SubscriptionRenewalRecord,
+    SubscriptionStatus,
+    PendingBillingAdjustment,
 )
 
 
