@@ -439,7 +439,7 @@ export async function acceptQuotation(quotationId: string): Promise<{ quotation:
 }
 
 // ==========================================
-// SUBSCRIPTIONS
+// SUBSCRIPTIONS (HTTP 422 RESOLVED)
 // ==========================================
 export async function fetchSubscriptions(): Promise<SubscriptionItem[]> {
   if (USE_MOCK) {
@@ -461,18 +461,27 @@ export async function createSubscription(payload: CreateSubscriptionPayload): Pr
       customerId: payload.customerId,
       planId: payload.planId,
       status: "ACTIVE",
-      price: "499.00",
+      price: payload.lines[0]?.unitPrice || "499.00",
       currency: "INR",
       billingInterval: "MONTHLY",
       createdAt: new Date().toISOString(),
     };
   }
 
+  // Exact FastAPI SubscriptionCreateRequest schema:
+  // - Top-level currency removed
+  // - Mandatory lines array passed
   const body = {
     customerId: payload.customerId,
     planId: payload.planId,
-    currency: payload.currency || APP_CONFIG.DEFAULT_CURRENCY,
     startDate: payload.startDate || new Date().toISOString().split("T")[0],
+    lines: payload.lines.map((l) => ({
+      planId: l.planId || payload.planId,
+      productId: l.productId || null,
+      variantId: l.variantId || null,
+      quantity: Number(l.quantity) || 1,
+      unitPrice: String(l.unitPrice).replace(/[^0-9.]/g, ""),
+    })),
   };
 
   const res = await apiRequest<any>("/subscriptions", {

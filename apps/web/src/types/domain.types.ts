@@ -159,6 +159,14 @@ export interface CreateQuotationPayload {
   discountCode?: string;
 }
 
+export interface SubscriptionLinePayload {
+  planId?: string;
+  productId?: string;
+  variantId?: string;
+  quantity: number;
+  unitPrice: string | number;
+}
+
 export interface SubscriptionItem {
   id: string;
   subscriptionNumber?: string;
@@ -182,7 +190,7 @@ export interface CreateSubscriptionPayload {
   customerId: string;
   planId: string;
   startDate?: string;
-  currency?: string;
+  lines: SubscriptionLinePayload[];
 }
 
 export interface InvoiceRecord {
