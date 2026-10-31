@@ -4,6 +4,7 @@ export type UserRole = "ADMIN" | "STAFF" | "CUSTOMER";
 export type InvoiceStatus = "DRAFT" | "CONFIRMED" | "PARTIALLY_PAID" | "OVERDUE" | "PAID" | "CANCELLED";
 export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "UPI" | "CARD" | "CHEQUE" | "GATEWAY" | "OTHER";
 export type PaymentStatus = "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED";
+export type NotificationType = "INVOICE_ISSUED" | "INVOICE_SENT" | "PAYMENT_RECEIVED" | "SUBSCRIPTION_UPGRADED" | "OTHER";
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -51,10 +52,6 @@ export interface PlanItem {
   trialDays?: number;
   isActive: boolean;
   activeSubscribers?: number;
-  allowPause?: boolean;
-  allowEarlyClose?: boolean;
-  allowRenewal?: boolean;
-  autoCloseAtEnd?: boolean;
   createdAt?: string;
 }
 
@@ -95,63 +92,57 @@ export interface CreateSubscriptionPayload {
 
 export interface InvoiceRecord {
   id: string;
-  invoiceNumber: string;
+  invoiceNumber?: string;
   customerId: string;
   customerName?: string;
   subscriptionId?: string | null;
-  status: InvoiceStatus;
-  currency: string;
-  subtotal: string | number;
-  taxTotal: string | number;
-  total: string | number;
-  amountPaid: string | number;
+  totalAmount: string | number;
   amountDue: string | number;
-  issueDate: string;
+  currency: string;
+  status: InvoiceStatus;
   dueDate: string;
-  createdAt?: string;
+  createdAt: string;
 }
 
 export interface PaymentRecord {
   id: string;
-  paymentNumber: string;
+  paymentNumber?: string;
   invoiceId: string;
-  customerId: string;
   amount: string | number;
   currency: string;
   method: PaymentMethod;
   status: PaymentStatus;
   reference?: string | null;
-  notes?: string | null;
-  paymentDate: string;
-  createdAt?: string;
+  createdAt: string;
 }
 
 export interface RecordPaymentPayload {
   invoiceId: string;
-  amount: string | number;
+  amount: string;
   currency: string;
   method: PaymentMethod;
   reference?: string;
-  notes?: string;
 }
 
 export interface NotificationItem {
   id: string;
+  type: NotificationType;
   title: string;
   message: string;
   isRead: boolean;
-  eventType?: string;
+  resourceType?: string | null;
   resourceId?: string | null;
   createdAt: string;
 }
 
-export interface DashboardMetrics {
+export interface AnalyticsDashboard {
+  currency: string;
   activeSubscriptions: number;
-  collectedRevenue: number | string;
-  outstandingBalance: number | string;
+  collectedRevenue: string | number;
+  outstandingBalance: string | number;
   overdueInvoiceCount: number;
-  mrr: number | string;
-  arr: number | string;
-  totalInvoiceCount: number;
+  mrr: string | number;
+  arr: string | number;
+  totalInvoices: number;
   upcomingRenewalsCount?: number;
 }
