@@ -8,9 +8,15 @@ import type {
   SubscriptionItem,
   CreateSubscriptionPayload,
   InvoiceRecord,
+  PaymentRecord,
+  RecordPaymentPayload,
+  DashboardMetrics,
   PaginatedResponse,
 } from "@/types/domain.types";
 
+// ==========================================
+// CUSTOMERS
+// ==========================================
 export async function fetchCustomers(search = ""): Promise<CustomerRecord[]> {
   if (USE_MOCK) {
     return [
@@ -19,41 +25,28 @@ export async function fetchCustomers(search = ""): Promise<CustomerRecord[]> {
     ];
   }
 
-  const query = new URLSearchParams({
-    page: "1",
-    pageSize: "50",
-  });
+  const query = new URLSearchParams({ page: "1", pageSize: "50" });
   if (search.trim()) query.set("search", search.trim());
-
   const data = await apiRequest<PaginatedResponse<CustomerRecord> | CustomerRecord[]>(`/customers?${query.toString()}`);
   return Array.isArray(data) ? data : data.items || [];
 }
 
 export async function createCustomer(payload: CreateCustomerPayload): Promise<CustomerRecord> {
-  if (USE_MOCK) {
-    return {
-      id: `cust-${Date.now()}`,
-      displayName: payload.displayName,
-      companyName: payload.companyName || null,
-      billingEmail: payload.billingEmail,
-      status: "ACTIVE",
-      createdAt: new Date().toISOString(),
-    };
-  }
-
   const body = {
     displayName: payload.displayName.trim(),
     billingEmail: payload.billingEmail.trim(),
     companyName: payload.companyName ? payload.companyName.trim() : null,
     phone: payload.phone ? payload.phone.trim() : null,
   };
-
   return apiRequest<CustomerRecord>("/customers", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
+// ==========================================
+// PLANS
+// ==========================================
 export async function fetchPlans(): Promise<PlanItem[]> {
   if (USE_MOCK) {
     return [
@@ -67,23 +60,10 @@ export async function fetchPlans(): Promise<PlanItem[]> {
 }
 
 export async function createPlan(payload: CreatePlanPayload): Promise<PlanItem> {
-  if (USE_MOCK) {
-    return {
-      id: `plan-${Date.now()}`,
-      name: payload.name,
-      price: payload.price,
-      currency: payload.currency || APP_CONFIG.DEFAULT_CURRENCY,
-      billingInterval: payload.billingInterval,
-      intervalCount: payload.intervalCount || 1,
-      isActive: true,
-      activeSubscribers: 0,
-    };
-  }
-
   const cleanPrice = String(payload.price).replace(/[^0-9.]/g, "");
   const body = {
     name: payload.name.trim(),
-    description: payload.description || `Billing tier for ${payload.name.trim()}`,
+    description: payload.description || `Tier for ${payload.name.trim()}`,
     price: cleanPrice,
     currency: (payload.currency || APP_CONFIG.DEFAULT_CURRENCY).toUpperCase(),
     billingInterval: payload.billingInterval,
@@ -96,11 +76,13 @@ export async function createPlan(payload: CreatePlanPayload): Promise<PlanItem> 
   });
 }
 
+// ==========================================
+// SUBSCRIPTIONS
+// ==========================================
 export async function fetchSubscriptions(): Promise<SubscriptionItem[]> {
   if (USE_MOCK) {
     return [
-      { id: "sub-01", customerId: "cust-01", customerName: "Acme Cloud Corp", planId: "plan-02", planName: "Enterprise Pro", status: "ACTIVE", price: "2499.00", currency: "INR", billingInterval: "MONTHLY", currentPeriodEnd: "2026-11-15" },
-      { id: "sub-02", customerId: "cust-02", customerName: "Apex Design Labs", planId: "plan-01", planName: "Starter Growth", status: "TRIAL", price: "499.00", currency: "INR", billingInterval: "MONTHLY", currentPeriodEnd: "2026-11-22" },
+      { id: "sub-01", subscriptionNumber: "SUB-2026-0001", customerId: "cust-01", customerName: "Acme Cloud Corp", planId: "plan-02", planName: "Enterprise Pro", status: "ACTIVE", price: "2499.00", currency: "INR", billingInterval: "MONTHLY", currentPeriodEnd: "2026-11-15" },
     ];
   }
 
@@ -109,19 +91,6 @@ export async function fetchSubscriptions(): Promise<SubscriptionItem[]> {
 }
 
 export async function createSubscription(payload: CreateSubscriptionPayload): Promise<SubscriptionItem> {
-  if (USE_MOCK) {
-    return {
-      id: `sub-${Date.now()}`,
-      customerId: payload.customerId,
-      planId: payload.planId,
-      status: "ACTIVE",
-      price: "499.00",
-      currency: "INR",
-      billingInterval: "MONTHLY",
-      createdAt: new Date().toISOString(),
-    };
-  }
-
   const body = {
     customerId: payload.customerId,
     planId: payload.planId,
@@ -135,11 +104,93 @@ export async function createSubscription(payload: CreateSubscriptionPayload): Pr
   });
 }
 
-export function getIsolatedInvoices(): InvoiceRecord[] {
-  return [
-    { id: "INV-2026-089", customer: "Acme Cloud Corp", amount: "2,499.00", currency: "INR", status: "PAID", due: "15 Oct 2026", isMock: true },
-    { id: "INV-2026-090", customer: "Horizon Data Tech", amount: "780.50", currency: "INR", status: "PENDING", due: "01 Nov 2026", isMock: true },
-    { id: "INV-2026-091", customer: "Apex Design Labs", amount: "499.00", currency: "INR", status: "PAID", due: "22 Oct 2026", isMock: true },
-    { id: "INV-2026-092", customer: "Nova Dynamics", amount: "2,040.50", currency: "INR", status: "PENDING", due: "10 Nov 2026", isMock: true },
-  ];
+// ==========================================
+// LIVE INVOICES (Real FastAPI Backend)
+// ==========================================
+export async function fetchInvoices(): Promise<InvoiceRecord[]> {
+  if (USE_MOCK) {
+    return [
+      { id: "inv-01", invoiceNumber: "INV-2026-0001", customerId: "cust-01", customerName: "Acme Cloud Corp", status: "CONFIRMED", currency: "INR", subtotal: "2499.00", taxTotal: "449.82", total: "2948.82", amountPaid: "0.00", amountDue: "2948.82", issueDate: "2026-10-15", dueDate: "2026-11-01" },
+      { id: "inv-02", invoiceNumber: "INV-2026-0002", customerId: "cust-02", customerName: "Apex Design Labs", status: "PAID", currency: "INR", subtotal: "499.00", taxTotal: "89.82", total: "588.82", amountPaid: "588.82", amountDue: "0.00", issueDate: "2026-10-22", dueDate: "2026-11-05" },
+    ];
+  }
+
+  const data = await apiRequest<PaginatedResponse<InvoiceRecord> | InvoiceRecord[]>("/invoices?page=1&pageSize=50");
+  return Array.isArray(data) ? data : data.items || [];
+}
+
+export async function confirmInvoice(id: string): Promise<InvoiceRecord> {
+  return apiRequest<InvoiceRecord>(`/invoices/${id}/confirm`, { method: "POST" });
+}
+
+export async function cancelInvoice(id: string): Promise<InvoiceRecord> {
+  return apiRequest<InvoiceRecord>(`/invoices/${id}/cancel`, { method: "POST" });
+}
+
+export async function sendInvoice(id: string): Promise<{ status: string; message: string }> {
+  return apiRequest<{ status: string; message: string }>(`/invoices/${id}/send`, { method: "POST" });
+}
+
+export async function downloadInvoicePdf(id: string, invoiceNumber: string): Promise<void> {
+  const token = localStorage.getItem("brightloop_access_token");
+  const baseUrl = APP_CONFIG.API_BASE_URL.replace(/\/+$/, "");
+  const response = await fetch(`${baseUrl}/invoices/${id}/pdf`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download PDF (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = downloadUrl;
+  a.download = `${invoiceNumber}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
+// ==========================================
+// LIVE PAYMENTS (Real FastAPI Backend)
+// ==========================================
+export async function fetchPayments(): Promise<PaymentRecord[]> {
+  if (USE_MOCK) return [];
+  const data = await apiRequest<PaginatedResponse<PaymentRecord> | PaymentRecord[]>("/payments?page=1&pageSize=50");
+  return Array.isArray(data) ? data : data.items || [];
+}
+
+export async function recordPayment(payload: RecordPaymentPayload): Promise<PaymentRecord> {
+  return apiRequest<PaymentRecord>("/payments", {
+    method: "POST",
+    body: JSON.stringify({
+      invoiceId: payload.invoiceId,
+      amount: String(payload.amount).replace(/[^0-9.]/g, ""),
+      currency: (payload.currency || APP_CONFIG.DEFAULT_CURRENCY).toUpperCase(),
+      method: payload.method,
+      reference: payload.reference || null,
+      notes: payload.notes || null,
+    }),
+  });
+}
+
+// ==========================================
+// ANALYTICS & DASHBOARD KPIS
+// ==========================================
+export async function fetchDashboardAnalytics(currency = "INR"): Promise<DashboardMetrics> {
+  if (USE_MOCK) {
+    return {
+      activeSubscriptions: 4,
+      collectedRevenue: "42890.00",
+      outstandingBalance: "3537.64",
+      overdueInvoiceCount: 1,
+      mrr: "42890.00",
+      arr: "514680.00",
+      totalInvoiceCount: 8,
+    };
+  }
+
+  return apiRequest<DashboardMetrics>(`/analytics/dashboard?currency=${currency}`);
 }
