@@ -3,8 +3,16 @@ import { USE_MOCK, APP_CONFIG } from "./mock.config";
 import type {
   CustomerRecord,
   CreateCustomerPayload,
+  ProductRecord,
+  CreateProductPayload,
   PlanItem,
   CreatePlanPayload,
+  TaxRuleRecord,
+  CreateTaxRulePayload,
+  DiscountRecord,
+  CreateDiscountPayload,
+  QuotationRecord,
+  CreateQuotationPayload,
   SubscriptionItem,
   CreateSubscriptionPayload,
   InvoiceRecord,
@@ -59,6 +67,47 @@ export async function createCustomer(payload: CreateCustomerPayload): Promise<Cu
 }
 
 // ==========================================
+// PRODUCTS
+// ==========================================
+export async function fetchProducts(): Promise<ProductRecord[]> {
+  if (USE_MOCK) {
+    return [
+      { id: "prod-01", name: "Cloud Compute Node", sku: "SKU-NODE-01", basePrice: "199.00", currency: "INR", isActive: true, createdAt: "2026-10-01" },
+    ];
+  }
+
+  const data = await apiRequest<PaginatedResponse<ProductRecord> | ProductRecord[]>("/products?page=1&pageSize=50");
+  return Array.isArray(data) ? data : data.items || [];
+}
+
+export async function createProduct(payload: CreateProductPayload): Promise<ProductRecord> {
+  if (USE_MOCK) {
+    return {
+      id: `prod-${Date.now()}`,
+      name: payload.name,
+      sku: payload.sku,
+      basePrice: payload.basePrice,
+      currency: payload.currency,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  const body = {
+    name: payload.name.trim(),
+    description: payload.description || `Catalog product ${payload.name.trim()}`,
+    sku: payload.sku.trim(),
+    basePrice: String(payload.basePrice).replace(/[^0-9.]/g, ""),
+    currency: payload.currency.toUpperCase(),
+  };
+
+  return apiRequest<ProductRecord>("/products", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ==========================================
 // PLANS
 // ==========================================
 export async function fetchPlans(): Promise<PlanItem[]> {
@@ -100,6 +149,102 @@ export async function createPlan(payload: CreatePlanPayload): Promise<PlanItem> 
   return apiRequest<PlanItem>("/plans", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+// ==========================================
+// TAX RULES & DISCOUNTS
+// ==========================================
+export async function fetchTaxRules(): Promise<TaxRuleRecord[]> {
+  if (USE_MOCK) {
+    return [
+      { id: "tax-01", name: "GST Standard", code: "GST-18", taxType: "IGST", ratePercentage: "18.00", isInclusive: false, isActive: true, createdAt: "2026-10-01" },
+    ];
+  }
+
+  const data = await apiRequest<PaginatedResponse<TaxRuleRecord> | TaxRuleRecord[]>("/tax-rules?page=1&pageSize=50");
+  return Array.isArray(data) ? data : data.items || [];
+}
+
+export async function createTaxRule(payload: CreateTaxRulePayload): Promise<TaxRuleRecord> {
+  const body = {
+    name: payload.name.trim(),
+    code: payload.code.trim().toUpperCase(),
+    taxType: payload.taxType,
+    ratePercentage: String(payload.ratePercentage).replace(/[^0-9.]/g, ""),
+    jurisdiction: payload.jurisdiction || "National",
+    isInclusive: payload.isInclusive,
+  };
+
+  return apiRequest<TaxRuleRecord>("/tax-rules", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchDiscounts(): Promise<DiscountRecord[]> {
+  if (USE_MOCK) {
+    return [
+      { id: "disc-01", name: "Early Bird", code: "EARLY10", discountType: "PERCENTAGE", value: "10.00", maxUsage: 100, isActive: true, createdAt: "2026-10-01" },
+    ];
+  }
+
+  const data = await apiRequest<PaginatedResponse<DiscountRecord> | DiscountRecord[]>("/discounts?page=1&pageSize=50");
+  return Array.isArray(data) ? data : data.items || [];
+}
+
+export async function createDiscount(payload: CreateDiscountPayload): Promise<DiscountRecord> {
+  const body = {
+    name: payload.name.trim(),
+    code: payload.code.trim().toUpperCase(),
+    discountType: payload.discountType,
+    value: String(payload.value).replace(/[^0-9.]/g, ""),
+    maxUsage: payload.maxUsage || null,
+  };
+
+  return apiRequest<DiscountRecord>("/discounts", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ==========================================
+// QUOTATIONS & ACCEPTANCE
+// ==========================================
+export async function fetchQuotations(): Promise<QuotationRecord[]> {
+  if (USE_MOCK) {
+    return [
+      { id: "quote-01", quotationNumber: "QUO-2026-0001", customerId: "cust-01", customerName: "Acme Cloud Corp", planId: "plan-02", planName: "Enterprise Pro", status: "DRAFT", subtotal: "2499.00", taxAmount: "449.82", discountAmount: "0.00", totalAmount: "2948.82", currency: "INR", createdAt: "2026-10-15" },
+    ];
+  }
+
+  const data = await apiRequest<PaginatedResponse<QuotationRecord> | QuotationRecord[]>("/quotations?page=1&pageSize=50");
+  return Array.isArray(data) ? data : data.items || [];
+}
+
+export async function createQuotation(payload: CreateQuotationPayload): Promise<QuotationRecord> {
+  const body = {
+    customerId: payload.customerId,
+    planId: payload.planId,
+    currency: payload.currency.toUpperCase(),
+    lines: payload.lines.map((l) => ({
+      productId: l.productId,
+      quantity: Number(l.quantity) || 1,
+      unitPrice: String(l.unitPrice).replace(/[^0-9.]/g, ""),
+    })),
+    taxRuleIds: payload.taxRuleIds || [],
+    discountCode: payload.discountCode ? payload.discountCode.trim().toUpperCase() : null,
+  };
+
+  return apiRequest<QuotationRecord>("/quotations", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function acceptQuotation(quotationId: string): Promise<{ quotation: QuotationRecord; subscriptionId: string }> {
+  return apiRequest<{ quotation: QuotationRecord; subscriptionId: string }>(`/quotations/${quotationId}/accept`, {
+    method: "POST",
   });
 }
 

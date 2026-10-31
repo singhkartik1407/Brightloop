@@ -5,6 +5,9 @@ export type InvoiceStatus = "DRAFT" | "CONFIRMED" | "PARTIALLY_PAID" | "OVERDUE"
 export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "UPI" | "CARD" | "CHEQUE" | "GATEWAY" | "OTHER";
 export type PaymentStatus = "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED";
 export type NotificationType = "INVOICE_ISSUED" | "INVOICE_SENT" | "PAYMENT_RECEIVED" | "SUBSCRIPTION_UPGRADED" | "OTHER";
+export type TaxType = "GENERIC" | "CGST" | "SGST" | "IGST" | "OTHER";
+export type DiscountType = "FIXED" | "PERCENTAGE";
+export type QuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED";
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -41,6 +44,25 @@ export interface CreateCustomerPayload {
   phone?: string | null;
 }
 
+export interface ProductRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  sku: string;
+  basePrice: string | number;
+  currency: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateProductPayload {
+  name: string;
+  description?: string;
+  sku: string;
+  basePrice: string;
+  currency: string;
+}
+
 export interface PlanItem {
   id: string;
   name: string;
@@ -62,6 +84,78 @@ export interface CreatePlanPayload {
   currency: string;
   billingInterval: BillingInterval;
   intervalCount: number;
+}
+
+export interface TaxRuleRecord {
+  id: string;
+  name: string;
+  code: string;
+  taxType: TaxType;
+  ratePercentage: string | number;
+  jurisdiction?: string;
+  isInclusive: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateTaxRulePayload {
+  name: string;
+  code: string;
+  taxType: TaxType;
+  ratePercentage: string;
+  jurisdiction?: string;
+  isInclusive: boolean;
+}
+
+export interface DiscountRecord {
+  id: string;
+  name: string;
+  code: string;
+  discountType: DiscountType;
+  value: string | number;
+  maxUsage?: number | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateDiscountPayload {
+  name: string;
+  code: string;
+  discountType: DiscountType;
+  value: string;
+  maxUsage?: number;
+}
+
+export interface QuotationLineItem {
+  productId: string;
+  quantity: number;
+  unitPrice: string | number;
+}
+
+export interface QuotationRecord {
+  id: string;
+  quotationNumber?: string;
+  customerId: string;
+  customerName?: string;
+  planId: string;
+  planName?: string;
+  status: QuotationStatus;
+  subtotal: string | number;
+  taxAmount: string | number;
+  discountAmount: string | number;
+  totalAmount: string | number;
+  currency: string;
+  subscriptionId?: string | null;
+  createdAt: string;
+}
+
+export interface CreateQuotationPayload {
+  customerId: string;
+  planId: string;
+  currency: string;
+  lines: QuotationLineItem[];
+  taxRuleIds?: string[];
+  discountCode?: string;
 }
 
 export interface SubscriptionItem {

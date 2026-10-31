@@ -27,18 +27,27 @@ import {
   WalletCards,
   Bell,
   Check,
+  Package,
+  Percent,
+  FileCheck2,
 } from "lucide-react";
 
 import type {
   SubscriptionItem,
   PlanItem,
   CustomerRecord,
+  ProductRecord,
+  TaxRuleRecord,
+  DiscountRecord,
+  QuotationRecord,
   InvoiceRecord,
   PaymentRecord,
   NotificationItem,
   AnalyticsDashboard,
   BillingInterval,
   PaymentMethod,
+  TaxType,
+  DiscountType,
 } from "@/types/domain.types";
 
 import {
@@ -48,6 +57,15 @@ import {
   createPlan,
   fetchCustomers,
   createCustomer,
+  fetchProducts,
+  createProduct,
+  fetchTaxRules,
+  createTaxRule,
+  fetchDiscounts,
+  createDiscount,
+  fetchQuotations,
+  createQuotation,
+  acceptQuotation,
   fetchInvoices,
   confirmInvoice,
   cancelInvoice,
@@ -64,7 +82,9 @@ import { APP_CONFIG, USE_MOCK } from "@/services/mock.config";
 
 export default function App() {
   const { user, login, logout, isLoading: authLoading, error: authContextError, clearError } = useAuth();
-  const [activeTab, setActiveTab] = useState<"subscriptions" | "plans" | "customers" | "invoices" | "payments">("subscriptions");
+  const [activeTab, setActiveTab] = useState<
+    "subscriptions" | "plans" | "customers" | "products" | "taxes" | "quotations" | "invoices" | "payments"
+  >("subscriptions");
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
@@ -77,18 +97,25 @@ export default function App() {
   const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
   const [plans, setPlans] = useState<PlanItem[]>([]);
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [taxRules, setTaxRules] = useState<TaxRuleRecord[]>([]);
+  const [discounts, setDiscounts] = useState<DiscountRecord[]>([]);
+  const [quotations, setQuotations] = useState<QuotationRecord[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsDashboard | null>(null);
 
-  // Notification UI State
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   // Modals
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isTaxModalOpen, setIsTaxModalOpen] = useState(false);
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<InvoiceRecord | null>(null);
 
@@ -97,6 +124,7 @@ export default function App() {
 
   const [customerSearch, setCustomerSearch] = useState("");
 
+  // Payloads
   const [newCustomer, setNewCustomer] = useState({ displayName: "", companyName: "", billingEmail: "", phone: "" });
   const [newSub, setNewSub] = useState({ customerId: "", planId: "" });
   const [newPlan, setNewPlan] = useState({
@@ -105,6 +133,17 @@ export default function App() {
     currency: APP_CONFIG.DEFAULT_CURRENCY,
     billingInterval: "MONTHLY" as BillingInterval,
     intervalCount: 1,
+  });
+  const [newProduct, setNewProduct] = useState({ name: "", sku: "", basePrice: "", currency: APP_CONFIG.DEFAULT_CURRENCY });
+  const [newTax, setNewTax] = useState({ name: "", code: "", taxType: "IGST" as TaxType, ratePercentage: "18.00", isInclusive: false });
+  const [newDiscount, setNewDiscount] = useState({ name: "", code: "", discountType: "PERCENTAGE" as DiscountType, value: "10.00", maxUsage: 100 });
+  const [newQuote, setNewQuote] = useState({
+    customerId: "",
+    planId: "",
+    productId: "",
+    quantity: 1,
+    unitPrice: "499.00",
+    discountCode: "",
   });
   const [newPayment, setNewPayment] = useState({
     amount: "",
@@ -118,25 +157,43 @@ export default function App() {
     setLoading(true);
     setApiError(null);
     try {
-      const [subsData, plansData, custsData, invsData, paysData, notifsData, analyticsData] = await Promise.all([
-        fetchSubscriptions().catch(() => []),
-        fetchPlans().catch(() => []),
-        fetchCustomers().catch(() => []),
-        fetchInvoices().catch(() => []),
-        fetchPayments().catch(() => []),
-        fetchNotifications().catch(() => []),
-        fetchAnalyticsDashboard("INR").catch(() => null),
-      ]);
+      const [subsData, plansData, custsData, prodsData, taxesData, discsData, quotesData, invsData, paysData, notifsData, analyticsData] =
+        await Promise.all([
+          fetchSubscriptions().catch(() => []),
+          fetchPlans().catch(() => []),
+          fetchCustomers().catch(() => []),
+          fetchProducts().catch(() => []),
+          fetchTaxRules().catch(() => []),
+          fetchDiscounts().catch(() => []),
+          fetchQuotations().catch(() => []),
+          fetchInvoices().catch(() => []),
+          fetchPayments().catch(() => []),
+          fetchNotifications().catch(() => []),
+          fetchAnalyticsDashboard("INR").catch(() => null),
+        ]);
       setSubscriptions(subsData);
       setPlans(plansData);
       setCustomers(custsData);
+      setProducts(prodsData);
+      setTaxRules(taxesData);
+      setDiscounts(discsData);
+      setQuotations(quotesData);
       setInvoices(invsData);
       setPayments(paysData);
       setNotifications(notifsData);
       setAnalytics(analyticsData);
 
-      if (custsData.length > 0) setNewSub((prev) => ({ ...prev, customerId: custsData[0].id }));
-      if (plansData.length > 0) setNewSub((prev) => ({ ...prev, planId: plansData[0].id }));
+      if (custsData.length > 0) {
+        setNewSub((prev) => ({ ...prev, customerId: custsData[0].id }));
+        setNewQuote((prev) => ({ ...prev, customerId: custsData[0].id }));
+      }
+      if (plansData.length > 0) {
+        setNewSub((prev) => ({ ...prev, planId: plansData[0].id }));
+        setNewQuote((prev) => ({ ...prev, planId: plansData[0].id }));
+      }
+      if (prodsData.length > 0) {
+        setNewQuote((prev) => ({ ...prev, productId: prodsData[0].id, unitPrice: String(prodsData[0].basePrice) }));
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load live backend records.";
       setApiError(message);
@@ -201,6 +258,96 @@ export default function App() {
       setModalError(err instanceof Error ? err.message : "Failed to publish plan.");
     } finally {
       setModalSubmitting(false);
+    }
+  };
+
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalError(null);
+    setModalSubmitting(true);
+    try {
+      const created = await createProduct(newProduct);
+      setProducts((prev) => [created, ...prev]);
+      setNewProduct({ name: "", sku: "", basePrice: "", currency: APP_CONFIG.DEFAULT_CURRENCY });
+      setIsProductModalOpen(false);
+      setSuccessNotice("Product catalog item created.");
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : "Failed to create product.");
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  const handleAddTax = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalError(null);
+    setModalSubmitting(true);
+    try {
+      const created = await createTaxRule(newTax);
+      setTaxRules((prev) => [created, ...prev]);
+      setNewTax({ name: "", code: "", taxType: "IGST", ratePercentage: "18.00", isInclusive: false });
+      setIsTaxModalOpen(false);
+      setSuccessNotice("Tax rule configured.");
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : "Failed to configure tax rule.");
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  const handleAddDiscount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalError(null);
+    setModalSubmitting(true);
+    try {
+      const created = await createDiscount(newDiscount);
+      setDiscounts((prev) => [created, ...prev]);
+      setNewDiscount({ name: "", code: "", discountType: "PERCENTAGE", value: "10.00", maxUsage: 100 });
+      setIsDiscountModalOpen(false);
+      setSuccessNotice("Discount rule published.");
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : "Failed to create discount.");
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  const handleAddQuotation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalError(null);
+    setModalSubmitting(true);
+    try {
+      const created = await createQuotation({
+        customerId: newQuote.customerId,
+        planId: newQuote.planId,
+        currency: APP_CONFIG.DEFAULT_CURRENCY,
+        lines: [
+          {
+            productId: newQuote.productId,
+            quantity: newQuote.quantity,
+            unitPrice: newQuote.unitPrice,
+          },
+        ],
+        discountCode: newQuote.discountCode || undefined,
+      });
+      setQuotations((prev) => [created, ...prev]);
+      setIsQuoteModalOpen(false);
+      setSuccessNotice("Quotation calculated and generated by backend.");
+    } catch (err: unknown) {
+      setModalError(err instanceof Error ? err.message : "Failed to calculate quotation.");
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  const handleAcceptQuotation = async (id: string) => {
+    try {
+      const res = await acceptQuotation(id);
+      setQuotations((prev) => prev.map((q) => (q.id === id ? { ...q, status: "ACCEPTED", subscriptionId: res.subscriptionId } : q)));
+      setSuccessNotice(`Quotation accepted! Subscription auto-provisioned: ${res.subscriptionId.slice(0, 8)}`);
+      loadDomainData();
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : "Failed to accept quotation.");
     }
   };
 
@@ -314,15 +461,18 @@ export default function App() {
       case "ACTIVE":
       case "PAID":
       case "SUCCEEDED":
+      case "ACCEPTED":
         return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/20"><CheckCircle2 className="w-3 h-3" /> {status}</span>;
       case "PAST_DUE":
       case "OVERDUE":
       case "FAILED":
       case "CANCELLED":
+      case "REJECTED":
         return <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-semibold text-rose-400 border border-rose-500/20"><AlertCircle className="w-3 h-3" /> {status}</span>;
       case "CONFIRMED":
       case "PARTIALLY_PAID":
       case "PENDING":
+      case "SENT":
         return <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-400 border border-amber-500/20">{status}</span>;
       default:
         return <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/10 px-2 py-0.5 text-xs font-semibold text-zinc-400 border border-zinc-500/20">{status}</span>;
@@ -451,12 +601,36 @@ export default function App() {
               <CreditCard className="w-4 h-4" /> Subscriptions
             </button>
             <button
+              onClick={() => setActiveTab("quotations")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === "quotations" ? "bg-blue-600 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              }`}
+            >
+              <FileCheck2 className="w-4 h-4" /> Quotations
+            </button>
+            <button
               onClick={() => setActiveTab("plans")}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "plans" ? "bg-blue-600 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
               }`}
             >
               <Layers className="w-4 h-4" /> Pricing Plans
+            </button>
+            <button
+              onClick={() => setActiveTab("products")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === "products" ? "bg-blue-600 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              }`}
+            >
+              <Package className="w-4 h-4" /> Catalog Products
+            </button>
+            <button
+              onClick={() => setActiveTab("taxes")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === "taxes" ? "bg-blue-600 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              }`}
+            >
+              <Percent className="w-4 h-4" /> Tax & Discounts
             </button>
             <button
               onClick={() => setActiveTab("customers")}
@@ -509,11 +683,10 @@ export default function App() {
       <main className="flex-1 overflow-y-auto p-8 space-y-8">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-white">Billing & Revenue Operations</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-white">Commercial & Revenue Operations</h2>
             <p className="text-sm text-zinc-400">PostgreSQL synchronized via FastAPI v1 routes.</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* Notification Bell */}
             <div className="relative">
               <Button
                 variant="outline"
@@ -603,7 +776,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Live Analytics Dashboard Cards */}
+        {/* Dashboard Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="bg-zinc-900 border-zinc-800 p-5 space-y-2">
             <div className="flex items-center justify-between text-zinc-400">
@@ -631,26 +804,22 @@ export default function App() {
 
           <Card className="bg-zinc-900 border-zinc-800 p-5 space-y-2">
             <div className="flex items-center justify-between text-zinc-400">
-              <span className="text-xs font-medium">Outstanding Balance</span>
-              <FileText className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="text-2xl font-bold text-white">
-              {analytics ? `₹${analytics.outstandingBalance}` : "..."}
-            </div>
-            <p className="text-xs text-amber-400 font-medium">
-              {analytics ? `${analytics.overdueInvoiceCount} overdue invoices` : "..."}
-            </p>
-          </Card>
-
-          <Card className="bg-zinc-900 border-zinc-800 p-5 space-y-2">
-            <div className="flex items-center justify-between text-zinc-400">
               <span className="text-xs font-medium">Active Subscriptions</span>
               <CreditCard className="w-4 h-4 text-purple-400" />
             </div>
             <div className="text-2xl font-bold text-white">
               {analytics ? analytics.activeSubscriptions : subscriptions.length}
             </div>
-            <p className="text-xs text-zinc-400">Active accounts</p>
+            <p className="text-xs text-zinc-400">Active billing accounts</p>
+          </Card>
+
+          <Card className="bg-zinc-900 border-zinc-800 p-5 space-y-2">
+            <div className="flex items-center justify-between text-zinc-400">
+              <span className="text-xs font-medium">Quotations Created</span>
+              <FileCheck2 className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-2xl font-bold text-white">{quotations.length}</div>
+            <p className="text-xs text-zinc-400">Backend calculated proposals</p>
           </Card>
         </div>
 
@@ -715,6 +884,77 @@ export default function App() {
               </div>
             )}
 
+            {/* Quotations */}
+            {activeTab === "quotations" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Commercial Quotations</h3>
+                    <p className="text-xs text-zinc-400">Authoritative server calculation & instant subscription provisioning</p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setModalError(null);
+                      setIsQuoteModalOpen(true);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Create Quotation
+                  </Button>
+                </div>
+
+                <Card className="bg-zinc-900 border-zinc-800 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-zinc-950/60 text-xs uppercase text-zinc-400 border-b border-zinc-800">
+                        <tr>
+                          <th className="py-3 px-4">Quote #</th>
+                          <th className="py-3 px-4">Customer</th>
+                          <th className="py-3 px-4">Subtotal</th>
+                          <th className="py-3 px-4">Tax Amount</th>
+                          <th className="py-3 px-4">Final Total</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800/60 font-mono text-xs">
+                        {quotations.length === 0 ? (
+                          <tr><td colSpan={7} className="py-8 text-center text-zinc-500">No quotations generated yet.</td></tr>
+                        ) : (
+                          quotations.map((q) => (
+                            <tr key={q.id} className="hover:bg-zinc-800/30 transition-colors">
+                              <td className="py-3.5 px-4 font-semibold text-white">{q.quotationNumber || q.id.slice(0, 8)}</td>
+                              <td className="py-3.5 px-4 font-sans text-zinc-300">{q.customerName || q.customerId.slice(0, 8)}</td>
+                              <td className="py-3.5 px-4 text-zinc-300">{q.currency} {q.subtotal}</td>
+                              <td className="py-3.5 px-4 text-amber-400">{q.currency} {q.taxAmount}</td>
+                              <td className="py-3.5 px-4 text-white font-bold">{q.currency} {q.totalAmount}</td>
+                              <td className="py-3.5 px-4">{getStatusBadge(q.status)}</td>
+                              <td className="py-3.5 px-4 text-right font-sans">
+                                {q.status !== "ACCEPTED" && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleAcceptQuotation(q.id)}
+                                    className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white"
+                                  >
+                                    Accept & Provision
+                                  </Button>
+                                )}
+                                {q.status === "ACCEPTED" && (
+                                  <span className="text-[11px] text-zinc-500 font-mono">
+                                    Sub: {q.subscriptionId?.slice(0, 8) || "Linked"}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
+
             {/* Plans */}
             {activeTab === "plans" && (
               <div className="space-y-4">
@@ -750,6 +990,119 @@ export default function App() {
                       </div>
                     </Card>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Catalog Products */}
+            {activeTab === "products" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Catalog Products</h3>
+                    <p className="text-xs text-zinc-400">Products and variants (/api/v1/products)</p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setModalError(null);
+                      setIsProductModalOpen(true);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Product
+                  </Button>
+                </div>
+
+                <Card className="bg-zinc-900 border-zinc-800 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-zinc-950/60 text-xs uppercase text-zinc-400 border-b border-zinc-800">
+                        <tr>
+                          <th className="py-3 px-4">Product Name</th>
+                          <th className="py-3 px-4">SKU</th>
+                          <th className="py-3 px-4">Base Price</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4">Product UUID</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800/60 text-xs">
+                        {products.length === 0 ? (
+                          <tr><td colSpan={5} className="py-8 text-center text-zinc-500">No products configured in catalog.</td></tr>
+                        ) : (
+                          products.map((p) => (
+                            <tr key={p.id} className="hover:bg-zinc-800/30 transition-colors">
+                              <td className="py-3.5 px-4 font-medium text-white">{p.name}</td>
+                              <td className="py-3.5 px-4 font-mono text-zinc-300">{p.sku}</td>
+                              <td className="py-3.5 px-4 text-white font-semibold">{p.currency} {p.basePrice}</td>
+                              <td className="py-3.5 px-4">{getStatusBadge(p.isActive ? "ACTIVE" : "INACTIVE")}</td>
+                              <td className="py-3.5 px-4 text-zinc-500 font-mono text-[11px]">{p.id}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* Taxes & Discounts */}
+            {activeTab === "taxes" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-white">Tax Rules (GST Engine)</h3>
+                      <p className="text-xs text-zinc-400">Classifications: CGST, SGST, IGST, Generic</p>
+                    </div>
+                    <Button onClick={() => setIsTaxModalOpen(true)} size="sm" className="bg-blue-600 hover:bg-blue-500 text-xs">
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Rule
+                    </Button>
+                  </div>
+                  <Card className="bg-zinc-900 border-zinc-800 p-4 divide-y divide-zinc-800">
+                    {taxRules.length === 0 ? (
+                      <p className="text-xs text-zinc-500 text-center py-4">No tax rules created.</p>
+                    ) : (
+                      taxRules.map((t) => (
+                        <div key={t.id} className="py-2.5 flex justify-between items-center text-xs">
+                          <div>
+                            <p className="font-semibold text-white">{t.name} ({t.code})</p>
+                            <span className="text-[10px] text-zinc-400">{t.taxType} &bull; {t.isInclusive ? "Inclusive" : "Exclusive"}</span>
+                          </div>
+                          <span className="font-mono text-amber-400 font-semibold">{t.ratePercentage}%</span>
+                        </div>
+                      ))
+                    )}
+                  </Card>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-white">Discount Engine</h3>
+                      <p className="text-xs text-zinc-400">Policy: Highest saving wins (non-stacking)</p>
+                    </div>
+                    <Button onClick={() => setIsDiscountModalOpen(true)} size="sm" className="bg-blue-600 hover:bg-blue-500 text-xs">
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Discount
+                    </Button>
+                  </div>
+                  <Card className="bg-zinc-900 border-zinc-800 p-4 divide-y divide-zinc-800">
+                    {discounts.length === 0 ? (
+                      <p className="text-xs text-zinc-500 text-center py-4">No discount rules created.</p>
+                    ) : (
+                      discounts.map((d) => (
+                        <div key={d.id} className="py-2.5 flex justify-between items-center text-xs">
+                          <div>
+                            <p className="font-semibold text-white">{d.name} ({d.code})</p>
+                            <span className="text-[10px] text-zinc-400">{d.discountType} &bull; Max usage: {d.maxUsage || "Unlimited"}</span>
+                          </div>
+                          <span className="font-mono text-emerald-400 font-semibold">
+                            {d.discountType === "PERCENTAGE" ? `${d.value}%` : `₹${d.value}`}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </Card>
                 </div>
               </div>
             )}
@@ -1000,6 +1353,175 @@ export default function App() {
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setIsPlanModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
                 <Button type="submit" disabled={modalSubmitting} className="bg-blue-600 hover:bg-blue-500 text-xs text-white">Publish Plan Tier</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Product */}
+      {isProductModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="text-base font-bold text-white">Add Catalog Product</h3>
+              <button onClick={() => setIsProductModalOpen(false)} className="text-zinc-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            {modalError && <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400">{modalError}</div>}
+            <form onSubmit={handleAddProduct} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Product Name *</Label>
+                <Input required value={newProduct.name} onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">SKU Code *</Label>
+                  <Input required placeholder="SKU-PROD-01" value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono uppercase" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Base Price *</Label>
+                  <Input required placeholder="199.00" value={newProduct.basePrice} onChange={(e) => setNewProduct({ ...newProduct, basePrice: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsProductModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
+                <Button type="submit" disabled={modalSubmitting} className="bg-blue-600 hover:bg-blue-500 text-xs text-white">Save Product</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Tax */}
+      {isTaxModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="text-base font-bold text-white">Add Tax Rule</h3>
+              <button onClick={() => setIsTaxModalOpen(false)} className="text-zinc-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            {modalError && <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400">{modalError}</div>}
+            <form onSubmit={handleAddTax} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Tax Name *</Label>
+                <Input required value={newTax.name} onChange={(e) => setNewTax({ ...newTax, name: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Code *</Label>
+                  <Input required placeholder="GST-18" value={newTax.code} onChange={(e) => setNewTax({ ...newTax, code: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono uppercase" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Rate (%) *</Label>
+                  <Input required placeholder="18.00" value={newTax.ratePercentage} onChange={(e) => setNewTax({ ...newTax, ratePercentage: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Tax Classification *</Label>
+                <select value={newTax.taxType} onChange={(e) => setNewTax({ ...newTax, taxType: e.target.value as TaxType })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
+                  <option value="IGST">IGST (Inter-state)</option>
+                  <option value="CGST">CGST (Central)</option>
+                  <option value="SGST">SGST (State)</option>
+                  <option value="GENERIC">Generic</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsTaxModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
+                <Button type="submit" disabled={modalSubmitting} className="bg-blue-600 hover:bg-blue-500 text-xs text-white">Save Rule</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Discount */}
+      {isDiscountModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="text-base font-bold text-white">Add Discount Rule</h3>
+              <button onClick={() => setIsDiscountModalOpen(false)} className="text-zinc-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            {modalError && <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400">{modalError}</div>}
+            <form onSubmit={handleAddDiscount} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Discount Name *</Label>
+                <Input required value={newDiscount.name} onChange={(e) => setNewDiscount({ ...newDiscount, name: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Promo Code *</Label>
+                  <Input required placeholder="SAVE20" value={newDiscount.code} onChange={(e) => setNewDiscount({ ...newDiscount, code: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono uppercase" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Value *</Label>
+                  <Input required placeholder="20.00" value={newDiscount.value} onChange={(e) => setNewDiscount({ ...newDiscount, value: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Type *</Label>
+                <select value={newDiscount.discountType} onChange={(e) => setNewDiscount({ ...newDiscount, discountType: e.target.value as DiscountType })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
+                  <option value="PERCENTAGE">Percentage (%)</option>
+                  <option value="FIXED">Fixed Amount (₹)</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsDiscountModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
+                <Button type="submit" disabled={modalSubmitting} className="bg-blue-600 hover:bg-blue-500 text-xs text-white">Save Discount</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Quotation Builder */}
+      {isQuoteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white">Create Commercial Quote</h3>
+                <p className="text-xs text-zinc-400">Backend calculates authoritative GST and discounts</p>
+              </div>
+              <button onClick={() => setIsQuoteModalOpen(false)} className="text-zinc-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            {modalError && <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400">{modalError}</div>}
+            <form onSubmit={handleAddQuotation} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Select Customer *</Label>
+                <select value={newQuote.customerId} onChange={(e) => setNewQuote({ ...newQuote, customerId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
+                  {customers.map((c) => <option key={c.id} value={c.id}>{c.displayName} ({c.companyName || "Direct"})</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Select Plan Tier *</Label>
+                <select value={newQuote.planId} onChange={(e) => setNewQuote({ ...newQuote, planId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
+                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.currency} {p.price} ({p.billingInterval})</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Product Line *</Label>
+                <select value={newQuote.productId} onChange={(e) => setNewQuote({ ...newQuote, productId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
+                  {products.map((pr) => <option key={pr.id} value={pr.id}>{pr.name} ({pr.sku})</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Quantity *</Label>
+                  <Input type="number" min="1" value={newQuote.quantity} onChange={(e) => setNewQuote({ ...newQuote, quantity: parseInt(e.target.value, 10) || 1 })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-300">Unit Price *</Label>
+                  <Input value={newQuote.unitPrice} onChange={(e) => setNewQuote({ ...newQuote, unitPrice: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Discount Code (Optional)</Label>
+                <Input placeholder="e.g. EARLY10" value={newQuote.discountCode} onChange={(e) => setNewQuote({ ...newQuote, discountCode: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono uppercase" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsQuoteModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
+                <Button type="submit" disabled={modalSubmitting || customers.length === 0 || plans.length === 0} className="bg-blue-600 hover:bg-blue-500 text-xs text-white">Generate Quote</Button>
               </div>
             </form>
           </Card>
