@@ -8,6 +8,7 @@ export type NotificationType = "INVOICE_ISSUED" | "INVOICE_SENT" | "PAYMENT_RECE
 export type TaxType = "GENERIC" | "CGST" | "SGST" | "IGST" | "OTHER";
 export type DiscountType = "FIXED" | "PERCENTAGE";
 export type QuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED";
+export type ProductType = "GOODS" | "SERVICE";
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -32,6 +33,7 @@ export interface CustomerRecord {
   companyName: string | null;
   billingEmail: string;
   phone?: string | null;
+  billingState: string;
   status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
   createdAt: string;
   updatedAt?: string;
@@ -42,6 +44,7 @@ export interface CreateCustomerPayload {
   billingEmail: string;
   companyName?: string | null;
   phone?: string | null;
+  billingState?: string;
 }
 
 export interface ProductRecord {
@@ -49,8 +52,9 @@ export interface ProductRecord {
   name: string;
   description?: string | null;
   sku: string;
-  basePrice: string | number;
+  salesPrice: string | number;
   currency: string;
+  type: ProductType;
   isActive: boolean;
   createdAt: string;
 }
@@ -59,8 +63,9 @@ export interface CreateProductPayload {
   name: string;
   description?: string;
   sku: string;
-  basePrice: string;
+  salesPrice: string;
   currency: string;
+  type?: ProductType;
 }
 
 export interface PlanItem {
@@ -126,10 +131,9 @@ export interface CreateDiscountPayload {
   maxUsage?: number;
 }
 
-export interface QuotationLineItem {
+export interface QuotationLinePayload {
   productId: string;
   quantity: number;
-  unitPrice: string | number;
 }
 
 export interface QuotationRecord {
@@ -152,9 +156,8 @@ export interface QuotationRecord {
 export interface CreateQuotationPayload {
   customerId: string;
   planId: string;
-  currency: string;
-  lines: QuotationLineItem[];
-  taxRuleIds?: string[];
+  startDate?: string;
+  lines: QuotationLinePayload[];
   discountCode?: string;
 }
 

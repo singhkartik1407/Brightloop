@@ -48,6 +48,7 @@ import type {
   PaymentMethod,
   TaxType,
   DiscountType,
+  ProductType,
 } from "@/types/domain.types";
 
 import {
@@ -125,7 +126,7 @@ export default function App() {
   const [customerSearch, setCustomerSearch] = useState("");
 
   // Payloads
-  const [newCustomer, setNewCustomer] = useState({ displayName: "", companyName: "", billingEmail: "", phone: "" });
+  const [newCustomer, setNewCustomer] = useState({ displayName: "", companyName: "", billingEmail: "", phone: "", billingState: "Maharashtra" });
   const [newSub, setNewSub] = useState({ customerId: "", planId: "", productId: "" });
   const [newPlan, setNewPlan] = useState({
     name: "",
@@ -134,7 +135,7 @@ export default function App() {
     billingInterval: "MONTHLY" as BillingInterval,
     intervalCount: 1,
   });
-  const [newProduct, setNewProduct] = useState({ name: "", sku: "", basePrice: "", currency: APP_CONFIG.DEFAULT_CURRENCY });
+  const [newProduct, setNewProduct] = useState({ name: "", sku: "", salesPrice: "", currency: APP_CONFIG.DEFAULT_CURRENCY, type: "SERVICE" as ProductType });
   const [newTax, setNewTax] = useState({ name: "", code: "", taxType: "IGST" as TaxType, ratePercentage: "18.00", isInclusive: false });
   const [newDiscount, setNewDiscount] = useState({ name: "", code: "", discountType: "PERCENTAGE" as DiscountType, value: "10.00", maxUsage: 100 });
   const [newQuote, setNewQuote] = useState({
@@ -142,7 +143,6 @@ export default function App() {
     planId: "",
     productId: "",
     quantity: 1,
-    unitPrice: "499.00",
     discountCode: "",
   });
   const [newPayment, setNewPayment] = useState({
@@ -193,7 +193,7 @@ export default function App() {
       }
       if (prodsData.length > 0) {
         setNewSub((prev) => ({ ...prev, productId: prev.productId || prodsData[0].id }));
-        setNewQuote((prev) => ({ ...prev, productId: prev.productId || prodsData[0].id, unitPrice: String(prodsData[0].basePrice) }));
+        setNewQuote((prev) => ({ ...prev, productId: prev.productId || prodsData[0].id }));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load live backend records.";
@@ -229,7 +229,7 @@ export default function App() {
     try {
       const created = await createCustomer(newCustomer);
       setCustomers((prev) => [created, ...prev]);
-      setNewCustomer({ displayName: "", companyName: "", billingEmail: "", phone: "" });
+      setNewCustomer({ displayName: "", companyName: "", billingEmail: "", phone: "", billingState: "Maharashtra" });
       setIsCustomerModalOpen(false);
       setSuccessNotice("Customer created successfully.");
     } catch (err: unknown) {
@@ -269,7 +269,7 @@ export default function App() {
     try {
       const created = await createProduct(newProduct);
       setProducts((prev) => [created, ...prev]);
-      setNewProduct({ name: "", sku: "", basePrice: "", currency: APP_CONFIG.DEFAULT_CURRENCY });
+      setNewProduct({ name: "", sku: "", salesPrice: "", currency: APP_CONFIG.DEFAULT_CURRENCY, type: "SERVICE" });
       setIsProductModalOpen(false);
       setSuccessNotice("Product catalog item created.");
     } catch (err: unknown) {
@@ -316,17 +316,20 @@ export default function App() {
   const handleAddQuotation = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
+    const resolvedProductId = newQuote.productId || (products[0] ? products[0].id : "");
+    if (!newQuote.customerId || !newQuote.planId || !resolvedProductId) {
+      setModalError("Please select customer, plan, and a product line.");
+      return;
+    }
     setModalSubmitting(true);
     try {
       const created = await createQuotation({
         customerId: newQuote.customerId,
         planId: newQuote.planId,
-        currency: APP_CONFIG.DEFAULT_CURRENCY,
         lines: [
           {
-            productId: newQuote.productId,
-            quantity: newQuote.quantity,
-            unitPrice: newQuote.unitPrice,
+            productId: resolvedProductId,
+            quantity: Number(newQuote.quantity) || 1,
           },
         ],
         discountCode: newQuote.discountCode || undefined,
@@ -352,7 +355,6 @@ export default function App() {
     }
   };
 
-  // Fixed: passes valid productId in lines, excludes planId, variantId, unitPrice from lines
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
@@ -410,7 +412,7 @@ export default function App() {
   const handleSendInvoice = async (id: string) => {
     try {
       const res = await sendInvoice(id);
-      setSuccessNotice(res.message || "Invoice notification queued (SMTP not configured).");
+      setSuccessNotice(res.message || "Invoice notification queued.");
     } catch (err: unknown) {
       setApiError(err instanceof Error ? err.message : "Failed to queue invoice send.");
     }
@@ -495,7 +497,6 @@ export default function App() {
     }
   };
 
-  // Safe null-handling customer filter (prevents toLowerCase crash on null/undefined fields)
   const term = (customerSearch || "").trim().toLowerCase();
   const filteredCustomers = customers.filter((c) => {
     if (!term) return true;
@@ -504,6 +505,12 @@ export default function App() {
     const emailMatch = c.billingEmail ? c.billingEmail.toLowerCase().includes(term) : false;
     return nameMatch || compMatch || emailMatch;
   });
+
+  // Customer display label resolver
+  const getCustomerLabel = (c: CustomerRecord) => {
+    if (c.companyName) return `${c.displayName} (${c.companyName})`;
+    return c.displayName;
+  };
 
   if (authLoading) {
     return (
@@ -803,10 +810,10 @@ export default function App() {
               <TrendingUp className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-bold text-white">
-              {analytics ? `₹${analytics.mrr}` : "..."}
+              ₹{analytics ? analytics.mrr : "0.00"}
             </div>
             <p className="text-xs text-emerald-400 font-medium">
-              ARR: {analytics ? `₹${analytics.arr}` : "..."}
+              ARR: ₹{analytics ? analytics.arr : "0.00"}
             </p>
           </Card>
 
@@ -816,7 +823,7 @@ export default function App() {
               <WalletCards className="w-4 h-4 text-blue-400" />
             </div>
             <div className="text-2xl font-bold text-white">
-              {analytics ? `₹${analytics.collectedRevenue}` : "..."}
+              ₹{analytics ? analytics.collectedRevenue : "0.00"}
             </div>
             <p className="text-xs text-zinc-400">Settled payments</p>
           </Card>
@@ -980,7 +987,7 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-white">Available Plans</h3>
-                    <p className="text-xs text-zinc-400">Validated against billingInterval and currency schema</p>
+                    <p className="text-xs text-zinc-400">Validated against billing_interval and currency schema</p>
                   </div>
                   <Button
                     onClick={() => {
@@ -1002,7 +1009,7 @@ export default function App() {
                           <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">{p.currency}</span>
                         </div>
                         <div className="mt-3 text-3xl font-extrabold text-white">
-                          {p.currency === "INR" ? "₹" : p.currency} {p.price}{" "}
+                          ₹{p.price}{" "}
                           <span className="text-xs text-zinc-500 font-normal">/{p.billingInterval.toLowerCase()}</span>
                         </div>
                         <p className="mt-4 text-xs text-zinc-400">{p.description || `Configured ${p.billingInterval} recurring tier`}</p>
@@ -1039,20 +1046,22 @@ export default function App() {
                         <tr>
                           <th className="py-3 px-4">Product Name</th>
                           <th className="py-3 px-4">SKU</th>
-                          <th className="py-3 px-4">Base Price</th>
+                          <th className="py-3 px-4">Type</th>
+                          <th className="py-3 px-4">Sales Price</th>
                           <th className="py-3 px-4">Status</th>
                           <th className="py-3 px-4">Product UUID</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-800/60 text-xs">
                         {products.length === 0 ? (
-                          <tr><td colSpan={5} className="py-8 text-center text-zinc-500">No products configured in catalog.</td></tr>
+                          <tr><td colSpan={6} className="py-8 text-center text-zinc-500">No products configured in catalog.</td></tr>
                         ) : (
                           products.map((p) => (
                             <tr key={p.id} className="hover:bg-zinc-800/30 transition-colors">
                               <td className="py-3.5 px-4 font-medium text-white">{p.name}</td>
                               <td className="py-3.5 px-4 font-mono text-zinc-300">{p.sku}</td>
-                              <td className="py-3.5 px-4 text-white font-semibold">{p.currency} {p.basePrice}</td>
+                              <td className="py-3.5 px-4 text-zinc-400">{p.type}</td>
+                              <td className="py-3.5 px-4 text-white font-semibold">{p.currency} {p.salesPrice}</td>
                               <td className="py-3.5 px-4">{getStatusBadge(p.isActive ? "ACTIVE" : "INACTIVE")}</td>
                               <td className="py-3.5 px-4 text-zinc-500 font-mono text-[11px]">{p.id}</td>
                             </tr>
@@ -1098,7 +1107,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-base font-semibold text-white">Discount Engine</h3>
+                      <h3 className="text-base font-semibold text-white">Discount Rules</h3>
                       <p className="text-xs text-zinc-400">Policy: Highest saving wins (non-stacking)</p>
                     </div>
                     <Button onClick={() => setIsDiscountModalOpen(true)} size="sm" className="bg-blue-600 hover:bg-blue-500 text-xs">
@@ -1165,6 +1174,7 @@ export default function App() {
                           <th className="py-3 px-4">Contact Name</th>
                           <th className="py-3 px-4">Company</th>
                           <th className="py-3 px-4">Billing Email</th>
+                          <th className="py-3 px-4">State</th>
                           <th className="py-3 px-4">Status</th>
                           <th className="py-3 px-4">Customer UUID</th>
                         </tr>
@@ -1172,13 +1182,14 @@ export default function App() {
                       <tbody className="divide-y divide-zinc-800/60 text-xs">
                         {filteredCustomers.map((cust) => (
                           <tr key={cust.id} className="hover:bg-zinc-800/30 transition-colors">
-                            <td className="py-3.5 px-4 font-medium text-white">{cust.displayName || "Unnamed"}</td>
+                            <td className="py-3.5 px-4 font-medium text-white">{cust.displayName}</td>
                             <td className="py-3.5 px-4 text-zinc-300 flex items-center gap-1.5">
                               <Building className="w-3.5 h-3.5 text-zinc-500" /> {cust.companyName || "Direct"}
                             </td>
                             <td className="py-3.5 px-4 text-zinc-300 font-mono">
                               <span className="flex items-center gap-1.5"><Mail className="w-3 h-3 text-zinc-500" /> {cust.billingEmail || "—"}</span>
                             </td>
+                            <td className="py-3.5 px-4 text-zinc-400 font-sans">{cust.billingState}</td>
                             <td className="py-3.5 px-4">{getStatusBadge(cust.status || "ACTIVE")}</td>
                             <td className="py-3.5 px-4 text-zinc-500 font-mono text-[11px]">{cust.id}</td>
                           </tr>
@@ -1213,7 +1224,7 @@ export default function App() {
                           <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-zinc-800/60 font-mono text-xs">
+                      <tbody className="divide-y divide-zinc-800/60 text-xs font-mono">
                         {invoices.length === 0 ? (
                           <tr><td colSpan={6} className="py-8 text-center text-zinc-500">No invoices generated yet.</td></tr>
                         ) : (
@@ -1238,7 +1249,7 @@ export default function App() {
                                 <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(inv.id, inv.invoiceNumber)} title="Download PDF" className="h-7 w-7 p-0 text-zinc-400 hover:text-white">
                                   <Download className="w-3.5 h-3.5" />
                                 </Button>
-                                <Button size="sm" variant="ghost" onClick={() => handleSendInvoice(inv.id)} title="Send Invoice (Queue)" className="h-7 w-7 p-0 text-zinc-400 hover:text-white">
+                                <Button size="sm" variant="ghost" onClick={() => handleSendInvoice(inv.id)} title="Send Invoice" className="h-7 w-7 p-0 text-zinc-400 hover:text-white">
                                   <Send className="w-3.5 h-3.5" />
                                 </Button>
                                 {inv.status === "DRAFT" && (
@@ -1327,6 +1338,10 @@ export default function App() {
                 <Label className="text-xs text-zinc-300">Billing Email *</Label>
                 <Input required type="email" value={newCustomer.billingEmail} onChange={(e) => setNewCustomer({ ...newCustomer, billingEmail: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white" />
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Billing State (Demo: Maharashtra) *</Label>
+                <Input required value={newCustomer.billingState} onChange={(e) => setNewCustomer({ ...newCustomer, billingState: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white" />
+              </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setIsCustomerModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
                 <Button type="submit" disabled={modalSubmitting} className="bg-blue-600 hover:bg-blue-500 text-xs text-white">Create Customer</Button>
@@ -1398,9 +1413,16 @@ export default function App() {
                   <Input required placeholder="SKU-PROD-01" value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono uppercase" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-300">Base Price *</Label>
-                  <Input required placeholder="199.00" value={newProduct.basePrice} onChange={(e) => setNewProduct({ ...newProduct, basePrice: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
+                  <Label className="text-xs text-zinc-300">Sales Price *</Label>
+                  <Input required placeholder="199.00" value={newProduct.salesPrice} onChange={(e) => setNewProduct({ ...newProduct, salesPrice: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-300">Classification *</Label>
+                <select value={newProduct.type} onChange={(e) => setNewProduct({ ...newProduct, type: e.target.value as ProductType })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
+                  <option value="SERVICE">Service</option>
+                  <option value="GOODS">Goods / Physical</option>
+                </select>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setIsProductModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
@@ -1509,13 +1531,13 @@ export default function App() {
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-300">Select Customer *</Label>
                 <select value={newQuote.customerId} onChange={(e) => setNewQuote({ ...newQuote, customerId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.displayName} ({c.companyName || "Direct"})</option>)}
+                  {customers.map((c) => <option key={c.id} value={c.id}>{getCustomerLabel(c)}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-300">Select Plan Tier *</Label>
                 <select value={newQuote.planId} onChange={(e) => setNewQuote({ ...newQuote, planId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
-                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.currency} {p.price} ({p.billingInterval})</option>)}
+                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name} — ₹{p.price} ({p.billingInterval})</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -1530,13 +1552,9 @@ export default function App() {
                   <Input type="number" min="1" value={newQuote.quantity} onChange={(e) => setNewQuote({ ...newQuote, quantity: parseInt(e.target.value, 10) || 1 })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-300">Unit Price *</Label>
-                  <Input value={newQuote.unitPrice} onChange={(e) => setNewQuote({ ...newQuote, unitPrice: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono" />
+                  <Label className="text-xs text-zinc-300">Discount Code (Optional)</Label>
+                  <Input placeholder="e.g. EARLY10" value={newQuote.discountCode} onChange={(e) => setNewQuote({ ...newQuote, discountCode: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono uppercase" />
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-300">Discount Code (Optional)</Label>
-                <Input placeholder="e.g. EARLY10" value={newQuote.discountCode} onChange={(e) => setNewQuote({ ...newQuote, discountCode: e.target.value })} className="bg-zinc-950 border-zinc-800 text-sm text-white font-mono uppercase" />
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setIsQuoteModalOpen(false)} className="border-zinc-800 text-xs">Cancel</Button>
@@ -1547,7 +1565,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Subscription (Clean line with valid productId) */}
+      {/* Modal: Subscription */}
       {isSubModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 p-6 space-y-5">
@@ -1560,13 +1578,13 @@ export default function App() {
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-300">Customer *</Label>
                 <select value={newSub.customerId} onChange={(e) => setNewSub({ ...newSub, customerId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.displayName} ({c.companyName || "Direct"})</option>)}
+                  {customers.map((c) => <option key={c.id} value={c.id}>{getCustomerLabel(c)}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-zinc-300">Plan Tier *</Label>
                 <select value={newSub.planId} onChange={(e) => setNewSub({ ...newSub, planId: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none">
-                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.currency} {p.price} ({p.billingInterval})</option>)}
+                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name} — ₹{p.price} ({p.billingInterval})</option>)}
                 </select>
               </div>
               {products.length > 0 && (
