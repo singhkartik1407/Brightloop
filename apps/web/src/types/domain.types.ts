@@ -1,5 +1,5 @@
 ﻿export type BillingInterval = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
-export type SubscriptionStatus = "DRAFT" | "TRIAL" | "ACTIVE" | "PAUSED" | "PAST_DUE" | "CANCELED" | "CLOSED";
+export type SubscriptionStatus = "DRAFT" | "TRIAL" | "ACTIVE" | "PAUSED" | "PAST_DUE" | "CANCELED" | "CLOSED" | "CONFIRMED";
 export type UserRole = "ADMIN" | "STAFF" | "CUSTOMER";
 export type InvoiceStatus = "DRAFT" | "CONFIRMED" | "PARTIALLY_PAID" | "OVERDUE" | "PAID" | "CANCELLED";
 export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "UPI" | "CARD" | "CHEQUE" | "GATEWAY" | "OTHER";
@@ -7,7 +7,8 @@ export type PaymentStatus = "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED";
 export type NotificationType = "INVOICE_ISSUED" | "INVOICE_SENT" | "PAYMENT_RECEIVED" | "SUBSCRIPTION_UPGRADED" | "OTHER";
 export type TaxType = "GENERIC" | "CGST" | "SGST" | "IGST" | "OTHER";
 export type DiscountType = "FIXED" | "PERCENTAGE";
-export type QuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED";
+export type DiscountScope = "GLOBAL" | "ORDER" | "SUBSCRIPTION";
+export type QuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CONFIRMED";
 export type ProductType = "GOODS" | "SERVICE";
 
 export interface PaginatedResponse<T> {
@@ -96,7 +97,7 @@ export interface TaxRuleRecord {
   name: string;
   code: string;
   taxType: TaxType;
-  ratePercentage: string | number;
+  ratePercent: number;
   jurisdiction?: string;
   isInclusive: boolean;
   isActive: boolean;
@@ -107,7 +108,7 @@ export interface CreateTaxRulePayload {
   name: string;
   code: string;
   taxType: TaxType;
-  ratePercentage: string;
+  ratePercent: number;
   jurisdiction?: string;
   isInclusive: boolean;
 }
@@ -118,7 +119,9 @@ export interface DiscountRecord {
   code: string;
   discountType: DiscountType;
   value: string | number;
-  maxUsage?: number | null;
+  scope: DiscountScope;
+  startsAt: string;
+  endsAt: string;
   isActive: boolean;
   createdAt: string;
 }
@@ -127,8 +130,10 @@ export interface CreateDiscountPayload {
   name: string;
   code: string;
   discountType: DiscountType;
-  value: string;
-  maxUsage?: number;
+  value: string | number;
+  scope?: DiscountScope;
+  startsAt?: string;
+  endsAt?: string;
 }
 
 export interface QuotationLinePayload {

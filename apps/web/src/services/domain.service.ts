@@ -23,9 +23,6 @@ import type {
   PaginatedResponse,
 } from "@/types/domain.types";
 
-// ==========================================
-// RESILIENT NORMALIZERS (snake_case -> camelCase)
-// ==========================================
 function normalizeCustomer(raw: any): CustomerRecord {
   return {
     id: raw.id,
@@ -50,7 +47,7 @@ function normalizeProduct(raw: any): ProductRecord {
     name: raw.name || "Unnamed Product",
     description: raw.description || raw.notes || null,
     sku: sku || raw.code || "SKU-GEN",
-    salesPrice: raw.sales_price !== undefined ? raw.sales_price : (raw.basePrice || "0.00"),
+    salesPrice: raw.sales_price !== undefined ? raw.sales_price : (raw.salesPrice !== undefined ? raw.salesPrice : (raw.basePrice || "0.00")),
     currency: raw.currency || "INR",
     type: raw.type || "SERVICE",
     isActive: raw.is_active !== undefined ? raw.is_active : true,
@@ -75,6 +72,12 @@ function normalizePlan(raw: any): PlanItem {
 }
 
 function normalizeQuotation(raw: any): QuotationRecord {
+  // Authoritative fallback chain: total -> total_amount -> totalAmount
+  const totalVal = raw.total !== undefined ? raw.total : (raw.total_amount !== undefined ? raw.total_amount : (raw.totalAmount !== undefined ? raw.totalAmount : "0.00"));
+  const taxVal = raw.tax_total !== undefined ? raw.tax_total : (raw.taxTotal !== undefined ? raw.taxTotal : (raw.tax_amount !== undefined ? raw.tax_amount : (raw.taxAmount || "0.00")));
+  const discountVal = raw.discount_total !== undefined ? raw.discount_total : (raw.discountTotal !== undefined ? raw.discountTotal : (raw.discount_amount !== undefined ? raw.discount_amount : (raw.discountAmount || "0.00")));
+  const subtotalVal = raw.subtotal !== undefined ? raw.subtotal : (raw.sub_total !== undefined ? raw.sub_total : "0.00");
+
   return {
     id: raw.id,
     quotationNumber: raw.quotation_number || raw.quotationNumber || `QUO-${raw.id.slice(0, 8)}`,
@@ -83,10 +86,10 @@ function normalizeQuotation(raw: any): QuotationRecord {
     planId: raw.plan_id || raw.planId,
     planName: raw.plan_name || raw.planName,
     status: raw.status || "DRAFT",
-    subtotal: raw.subtotal !== undefined ? raw.subtotal : "0.00",
-    taxAmount: raw.tax_amount !== undefined ? raw.tax_amount : (raw.taxAmount || "0.00"),
-    discountAmount: raw.discount_amount !== undefined ? raw.discount_amount : (raw.discountAmount || "0.00"),
-    totalAmount: raw.total_amount !== undefined ? raw.total_amount : (raw.totalAmount || "0.00"),
+    subtotal: subtotalVal,
+    taxAmount: taxVal,
+    discountAmount: discountVal,
+    totalAmount: totalVal,
     currency: raw.currency || "INR",
     subscriptionId: raw.subscription_id || raw.subscriptionId || null,
     createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
@@ -100,8 +103,8 @@ function normalizeInvoice(raw: any): InvoiceRecord {
     customerId: raw.customer_id || raw.customerId,
     customerName: raw.customer_name || raw.customerName,
     subscriptionId: raw.subscription_id || raw.subscriptionId || null,
-    totalAmount: raw.total_amount !== undefined ? raw.total_amount : (raw.totalAmount || "0.00"),
-    amountDue: raw.amount_due !== undefined ? raw.amount_due : (raw.amountDue || "0.00"),
+    totalAmount: raw.total_amount !== undefined ? raw.total_amount : (raw.totalAmount !== undefined ? raw.totalAmount : (raw.total || "0.00")),
+    amountDue: raw.amount_due !== undefined ? raw.amount_due : (raw.amountDue !== undefined ? raw.amountDue : (raw.due_amount || "0.00")),
     currency: raw.currency || "INR",
     status: raw.status || "DRAFT",
     dueDate: raw.due_date || raw.dueDate || "",
@@ -206,47 +209,105 @@ export async function createPlan(payload: CreatePlanPayload): Promise<PlanItem> 
 }
 
 // ==========================================
-// TAX RULES & DISCOUNT RULES
+// TAX RULES
 // ==========================================
 export async function fetchTaxRules(): Promise<TaxRuleRecord[]> {
-  const data = await apiRequest<PaginatedResponse<TaxRuleRecord> | TaxRuleRecord[]>("/tax-rules?page=1&pageSize=50");
-  return Array.isArray(data) ? data : data.items || [];
+  const data = await apiRequest<PaginatedResponse<any> | any[]>("/tax-rules?page=1&pageSize=50");
+  const items = Array.isArray(data) ? data : data.items || [];
+  return items.map((raw) => ({
+    id: raw.id,
+    name: raw.name || "Tax Rule",
+    code: raw.code || "TAX",
+    taxType: raw.tax_type || raw.taxType || "IGST",
+    ratePercent: Number(raw.rate_percent !== undefined ? raw.rate_percent : (raw.ratePercent !== undefined ? raw.ratePercent : (raw.rate_percentage || 0))),
+    jurisdiction: raw.jurisdiction || "National",
+    isInclusive: Boolean(raw.is_inclusive !== undefined ? raw.is_inclusive : raw.isInclusive),
+    isActive: Boolean(raw.is_active !== undefined ? raw.is_active : true),
+    createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
+  }));
 }
 
 export async function createTaxRule(payload: CreateTaxRulePayload): Promise<TaxRuleRecord> {
+  // Schema strictly expects ratePercent as numeric and forbids extra inputs
   const body = {
     name: payload.name.trim(),
     code: payload.code.trim().toUpperCase(),
-    tax_type: payload.taxType,
-    rate_percentage: String(payload.ratePercentage).replace(/[^0-9.]/g, ""),
+    taxType: payload.taxType,
+    ratePercent: Number(payload.ratePercent),
     jurisdiction: payload.jurisdiction || "National",
-    is_inclusive: payload.isInclusive,
+    isInclusive: Boolean(payload.isInclusive),
   };
 
-  return apiRequest<TaxRuleRecord>("/tax-rules", {
+  const res = await apiRequest<any>("/tax-rules", {
     method: "POST",
     body: JSON.stringify(body),
   });
+
+  return {
+    id: res.id,
+    name: res.name,
+    code: res.code,
+    taxType: res.tax_type || res.taxType || payload.taxType,
+    ratePercent: Number(res.rate_percent !== undefined ? res.rate_percent : (res.ratePercent !== undefined ? res.ratePercent : payload.ratePercent)),
+    jurisdiction: res.jurisdiction || payload.jurisdiction,
+    isInclusive: Boolean(res.is_inclusive !== undefined ? res.is_inclusive : payload.isInclusive),
+    isActive: Boolean(res.is_active !== undefined ? res.is_active : true),
+    createdAt: res.created_at || res.createdAt || new Date().toISOString(),
+  };
 }
 
+// ==========================================
+// DISCOUNT RULES
+// ==========================================
 export async function fetchDiscounts(): Promise<DiscountRecord[]> {
-  const data = await apiRequest<PaginatedResponse<DiscountRecord> | DiscountRecord[]>("/discount-rules?page=1&pageSize=50");
-  return Array.isArray(data) ? data : data.items || [];
+  const data = await apiRequest<PaginatedResponse<any> | any[]>("/discount-rules?page=1&pageSize=50");
+  const items = Array.isArray(data) ? data : data.items || [];
+  return items.map((raw) => ({
+    id: raw.id,
+    name: raw.name || "Discount",
+    code: raw.code || "DISC",
+    discountType: raw.discount_type || raw.discountType || "PERCENTAGE",
+    value: raw.value || 0,
+    scope: raw.scope || "GLOBAL",
+    startsAt: raw.starts_at || raw.startsAt || new Date().toISOString(),
+    endsAt: raw.ends_at || raw.endsAt || new Date(Date.now() + 365 * 86400000).toISOString(),
+    isActive: Boolean(raw.is_active !== undefined ? raw.is_active : true),
+    createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
+  }));
 }
 
 export async function createDiscount(payload: CreateDiscountPayload): Promise<DiscountRecord> {
+  // Required fields per schema: scope, startsAt, endsAt. Unsupported max_usage removed.
+  const now = new Date();
+  const oneYearLater = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+
   const body = {
     name: payload.name.trim(),
     code: payload.code.trim().toUpperCase(),
-    discount_type: payload.discountType,
+    discountType: payload.discountType,
     value: String(payload.value).replace(/[^0-9.]/g, ""),
-    max_usage: payload.maxUsage || null,
+    scope: payload.scope || "GLOBAL",
+    startsAt: payload.startsAt || now.toISOString(),
+    endsAt: payload.endsAt || oneYearLater.toISOString(),
   };
 
-  return apiRequest<DiscountRecord>("/discount-rules", {
+  const res = await apiRequest<any>("/discount-rules", {
     method: "POST",
     body: JSON.stringify(body),
   });
+
+  return {
+    id: res.id,
+    name: res.name,
+    code: res.code,
+    discountType: res.discount_type || res.discountType || payload.discountType,
+    value: res.value || payload.value,
+    scope: res.scope || payload.scope || "GLOBAL",
+    startsAt: res.starts_at || res.startsAt || body.startsAt,
+    endsAt: res.ends_at || res.endsAt || body.endsAt,
+    isActive: Boolean(res.is_active !== undefined ? res.is_active : true),
+    createdAt: res.created_at || res.createdAt || new Date().toISOString(),
+  };
 }
 
 // ==========================================
@@ -293,21 +354,29 @@ export async function acceptQuotation(quotationId: string): Promise<{ quotation:
 export async function fetchSubscriptions(): Promise<SubscriptionItem[]> {
   const data = await apiRequest<PaginatedResponse<any> | any[]>("/subscriptions?page=1&pageSize=50");
   const items = Array.isArray(data) ? data : data.items || [];
-  return items.map((raw) => ({
-    id: raw.id,
-    subscriptionNumber: raw.subscription_number || raw.subscriptionNumber || `SUB-${raw.id.slice(0, 8)}`,
-    customerId: raw.customer_id || raw.customerId,
-    customerName: raw.customer_name || raw.customerName,
-    planId: raw.plan_id || raw.planId,
-    planName: raw.plan_name || raw.planName,
-    quotationId: raw.quotation_id || raw.quotationId || null,
-    status: raw.status || "ACTIVE",
-    price: raw.price || "0.00",
-    currency: raw.currency || "INR",
-    billingInterval: raw.billing_interval || raw.billingInterval || "MONTHLY",
-    currentPeriodEnd: raw.current_period_end || raw.currentPeriodEnd,
-    createdAt: raw.created_at || raw.createdAt,
-  }));
+  return items.map((raw) => {
+    // Resolve price from root, plan object, or plan price attribute
+    const resolvedPrice =
+      raw.price !== undefined && raw.price !== null && raw.price !== "0.00" && raw.price !== 0
+        ? raw.price
+        : (raw.plan?.price || raw.plan_price || raw.recurring_amount || raw.total_amount || raw.amount || "0.00");
+
+    return {
+      id: raw.id,
+      subscriptionNumber: raw.subscription_number || raw.subscriptionNumber || `SUB-${raw.id.slice(0, 8)}`,
+      customerId: raw.customer_id || raw.customerId,
+      customerName: raw.customer_name || raw.customerName,
+      planId: raw.plan_id || raw.planId,
+      planName: raw.plan_name || raw.planName || raw.plan?.name,
+      quotationId: raw.quotation_id || raw.quotationId || null,
+      status: raw.status || "ACTIVE",
+      price: resolvedPrice,
+      currency: raw.currency || (raw.plan && raw.plan.currency) || "INR",
+      billingInterval: raw.billing_interval || raw.billingInterval || (raw.plan && raw.plan.billing_interval) || "MONTHLY",
+      currentPeriodEnd: raw.current_period_end || raw.currentPeriodEnd,
+      createdAt: raw.created_at || raw.createdAt,
+    };
+  });
 }
 
 export async function createSubscription(payload: CreateSubscriptionPayload): Promise<SubscriptionItem> {
@@ -332,9 +401,9 @@ export async function createSubscription(payload: CreateSubscriptionPayload): Pr
     customerId: raw.customer_id || raw.customerId,
     customerName: raw.customer_name || raw.customerName,
     planId: raw.plan_id || raw.planId,
-    planName: raw.plan_name || raw.planName,
+    planName: raw.plan_name || raw.planName || raw.plan?.name,
     status: raw.status || "ACTIVE",
-    price: raw.price || "0.00",
+    price: raw.price || raw.plan?.price || "0.00",
     currency: raw.currency || "INR",
     billingInterval: raw.billing_interval || raw.billingInterval || "MONTHLY",
     createdAt: raw.created_at || raw.createdAt,
@@ -342,7 +411,7 @@ export async function createSubscription(payload: CreateSubscriptionPayload): Pr
 }
 
 // ==========================================
-// INVOICES
+// INVOICES & PAYMENTS & NOTIFICATIONS & ANALYTICS
 // ==========================================
 export async function fetchInvoices(): Promise<InvoiceRecord[]> {
   const data = await apiRequest<PaginatedResponse<any> | any[]>("/invoices?page=1&pageSize=50");
@@ -386,9 +455,6 @@ export async function downloadInvoicePdf(invoiceId: string, invoiceNumber = "inv
   window.URL.revokeObjectURL(downloadUrl);
 }
 
-// ==========================================
-// PAYMENTS
-// ==========================================
 export async function fetchPayments(): Promise<PaymentRecord[]> {
   const data = await apiRequest<PaginatedResponse<any> | any[]>("/payments?page=1&pageSize=50");
   const items = Array.isArray(data) ? data : data.items || [];
@@ -412,9 +478,6 @@ export async function recordPayment(payload: RecordPaymentPayload): Promise<Paym
   return normalizePayment(res);
 }
 
-// ==========================================
-// NOTIFICATIONS
-// ==========================================
 export async function fetchNotifications(): Promise<NotificationItem[]> {
   const data = await apiRequest<PaginatedResponse<NotificationItem> | NotificationItem[]>("/notifications?page=1&pageSize=20");
   return Array.isArray(data) ? data : data.items || [];
@@ -428,9 +491,6 @@ export async function markAllNotificationsRead(): Promise<void> {
   await apiRequest("/notifications/read-all", { method: "POST" });
 }
 
-// ==========================================
-// ANALYTICS (EXACT SUMMARY RESPONSE MAPPING)
-// ==========================================
 export async function fetchAnalyticsDashboard(currency = "INR"): Promise<AnalyticsDashboard> {
   const raw = await apiRequest<any>(`/analytics/summary?currency=${encodeURIComponent(currency)}`);
   return {
